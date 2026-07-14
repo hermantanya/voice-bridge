@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 
 import { registerSocketHandlers } from "./ws/handler.js";
+import { translateRouter } from "./routes/translate.js";
 
 dotenv.config();
 
@@ -22,13 +23,19 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({ origin: CLIENT_ORIGIN === "*" ? true : CLIENT_ORIGIN.split(",") }));
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
+
+app.use(
+  "/api/translate",
+  express.raw({ type: "*/*", limit: "15mb" }),
+  translateRouter,
+);
 
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "voice-bridge-server",
-    version: "0.1.0",
+    version: "0.2.0",
     timestamp: new Date().toISOString(),
   });
 });

@@ -47,16 +47,24 @@ npm run dev
 curl http://localhost:3001/health
 ```
 
-Expected response:
+### 5. Test translation pipeline (requires OPENAI_API_KEY in .env)
 
-```json
-{
-  "status": "ok",
-  "service": "voice-bridge-server",
-  "version": "0.1.0",
-  "timestamp": "..."
-}
+Record a short English phrase, then:
+
+```bash
+# macOS: record 3 seconds from mic
+rec -r 16000 -c 1 -b 16 test.wav trim 0 3
+
+curl -X POST "http://localhost:3001/api/translate?sourceLang=en&targetLang=he&format=wav" \
+  --data-binary @test.wav \
+  -o response.json
+
+# Play translated audio (macOS)
+node -e "const r=require('./response.json');require('fs').writeFileSync('out.mp3',Buffer.from(r.audioBase64,'base64'))"
+afplay out.mp3
 ```
+
+Expected `response.json` fields: `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
 
 ## Deploy to Railway
 
@@ -77,7 +85,7 @@ Expected response:
 ## Roadmap
 
 - [x] Step 1: Backend skeleton + WebSocket
-- [ ] Step 2: STT → translate → TTS pipeline
+- [x] Step 2: STT → translate → TTS pipeline
 - [ ] Step 3: Mobile app shell
 - [ ] Step 4: Audio capture + playback
 - [ ] Step 5: Turn-based bidirectional
