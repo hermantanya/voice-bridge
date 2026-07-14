@@ -1,0 +1,12 @@
+{
+  "name": "voice-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm ci --prefix server && npm run build --prefix server",
+    "start": "npm start --prefix server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
