@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Build output
+dist/
+server/dist/
+.expo/
+apps/mobile/.expo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# Audio samples from testing (never commit)
+audio-samples/
+*.wav
+*.mp3
+*.m4a
+*.webm
+
+# Certificates
+*.pem
+*.p12
+*.key
+
+# IDE
+.idea/
+.vscode/
