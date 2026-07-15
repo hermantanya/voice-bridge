@@ -21,6 +21,7 @@ type SessionScreenProps = {
   errorMessage: string | null;
   isRecording: boolean;
   isMyTurn: boolean;
+  isOpenTurn: boolean;
   isProcessing: boolean;
   lastSent: TranslationResult | null;
   lastReceived: TranslationResult | null;
@@ -65,6 +66,7 @@ export function SessionScreen({
   errorMessage,
   isRecording,
   isMyTurn,
+  isOpenTurn,
   isProcessing,
   lastSent,
   lastReceived,
@@ -77,9 +79,9 @@ export function SessionScreen({
   const canTalk =
     status === "connected" &&
     participants > 1 &&
-    isMyTurn &&
     !isProcessing &&
-    !isRecording;
+    !isRecording &&
+    (isOpenTurn || isMyTurn);
 
   const turnLabel = (() => {
     if (participants < 2) {
@@ -89,9 +91,12 @@ export function SessionScreen({
       return "Translating...";
     }
     if (isMyTurn) {
-      return "Your turn to speak";
+      return "You're speaking";
     }
-    return "Partner's turn";
+    if (isOpenTurn) {
+      return "Ready — hold to talk";
+    }
+    return "Partner is speaking";
   })();
 
   const turnColor = (() => {
@@ -100,6 +105,9 @@ export function SessionScreen({
     }
     if (isMyTurn) {
       return "#22c55e";
+    }
+    if (isOpenTurn) {
+      return "#60a5fa";
     }
     return "#64748b";
   })();
@@ -215,14 +223,15 @@ export function SessionScreen({
 
       {participants < 2 ? (
         <Text style={styles.hint}>
-          Waiting for a second participant to join before turns begin.
+          Waiting for a second participant to join.
         </Text>
-      ) : isMyTurn ? (
+      ) : isMyTurn || isOpenTurn ? (
         <Text style={styles.hint}>
           Hold the button, speak in {languageLabel(myLang)}, then release.
           {partnerLang
             ? ` Your partner hears ${languageLabel(partnerLang)}.`
             : ""}
+          {isOpenTurn ? " First to press the button gets to speak." : ""}
           {Platform.OS === "web"
             ? " Allow microphone access when your browser asks."
             : ""}
@@ -233,7 +242,7 @@ export function SessionScreen({
         </Text>
       ) : (
         <Text style={styles.hint}>
-          Wait for your turn. You'll hear the translation automatically.
+          Your partner is speaking. You'll hear the translation automatically.
         </Text>
       )}
 
@@ -258,9 +267,9 @@ export function SessionScreen({
           <Text style={styles.talkButtonText}>
             {isRecording
               ? "Listening..."
-              : isMyTurn
+              : isMyTurn || isOpenTurn
                 ? "Hold to talk"
-                : "Wait for your turn"}
+                : "Partner is speaking"}
           </Text>
         )}
       </Pressable>

@@ -49,13 +49,27 @@ export default function App() {
     playAudioRef.current = audio.playAudioBase64;
   }, [audio.playAudioBase64]);
 
+  const handleStartRecording = useCallback(async () => {
+    const claimed = await socket.claimTurn();
+    if (!claimed) {
+      throw new Error("Someone else started speaking first");
+    }
+    await audio.startRecording();
+  }, [audio.startRecording, socket.claimTurn]);
+
   useEffect(() => {
-    if (!inSession || socket.isMyTurn || !audio.isRecording) {
+    if (!inSession || socket.isMyTurn || socket.isOpenTurn || !audio.isRecording) {
       return;
     }
 
     void audio.stopRecording();
-  }, [audio.isRecording, audio.stopRecording, inSession, socket.isMyTurn]);
+  }, [
+    audio.isRecording,
+    audio.stopRecording,
+    inSession,
+    socket.isMyTurn,
+    socket.isOpenTurn,
+  ]);
 
   const content = useMemo(() => {
     if (screen === "settings") {
@@ -80,10 +94,11 @@ export default function App() {
           errorMessage={socket.errorMessage}
           isRecording={audio.isRecording}
           isMyTurn={socket.isMyTurn}
+          isOpenTurn={socket.isOpenTurn}
           isProcessing={socket.isProcessing}
           lastSent={socket.lastSent}
           lastReceived={socket.lastReceived}
-          onStartRecording={audio.startRecording}
+          onStartRecording={handleStartRecording}
           onStopRecording={audio.stopRecording}
           onLeave={() => {
             audio.releaseMicrophone();
@@ -119,12 +134,14 @@ export default function App() {
     audio.releaseMicrophone,
     audio.startRecording,
     audio.stopRecording,
+    handleStartRecording,
     myLang,
     roomCode,
     screen,
     socket.disconnect,
     socket.errorMessage,
     socket.isMyTurn,
+    socket.isOpenTurn,
     socket.isProcessing,
     socket.lastReceived,
     socket.lastSent,

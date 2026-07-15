@@ -73,6 +73,7 @@ export function useSocket({
     participantId !== null &&
     turnParticipantId === participantId &&
     turnPhase === "speaking";
+  const isOpenTurn = turnPhase === "waiting";
   const isProcessing = turnPhase === "processing";
 
   useEffect(() => {
@@ -111,6 +112,41 @@ export function useSocket({
     setPartnerLang(null);
     resetTurnState();
   }, [resetTurnState]);
+
+  const claimTurn = useCallback((): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        resolve(false);
+        return;
+      }
+
+      socket.emit(
+        "claim_turn",
+        {},
+        (response?: { ok?: boolean; message?: string }) => {
+          if (response?.ok) {
+            const me = participantIdRef.current;
+            if (me) {
+              applyTurnState({
+                turnParticipantId: me,
+                phase: "speaking",
+                version: turnStateRef.current.version + 1,
+              });
+            }
+            setErrorMessage(null);
+            resolve(true);
+            return;
+          }
+
+          if (response?.message) {
+            setErrorMessage(response.message);
+          }
+          resolve(false);
+        },
+      );
+    });
+  }, [applyTurnState]);
 
   const sendAudioChunk = useCallback(
     (audioBase64: string, format: string) => {
@@ -258,10 +294,12 @@ export function useSocket({
     turnParticipantId,
     turnPhase,
     isMyTurn,
+    isOpenTurn,
     isProcessing,
     lastSent,
     lastReceived,
     disconnect,
+    claimTurn,
     sendAudioChunk,
   };
 };
