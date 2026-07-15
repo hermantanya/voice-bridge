@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -20,7 +20,8 @@ type SessionScreenProps = {
   participantId: string | null;
   errorMessage: string | null;
   isRecording: boolean;
-  isTranslating: boolean;
+  isMyTurn: boolean;
+  isProcessing: boolean;
   lastSent: TranslationResult | null;
   lastReceived: TranslationResult | null;
   onStartRecording: () => void;
@@ -63,7 +64,8 @@ export function SessionScreen({
   participantId,
   errorMessage,
   isRecording,
-  isTranslating,
+  isMyTurn,
+  isProcessing,
   lastSent,
   lastReceived,
   onStartRecording,
@@ -71,30 +73,46 @@ export function SessionScreen({
   onLeave,
 }: SessionScreenProps) {
   const [recordError, setRecordError] = useState<string | null>(null);
+  const holdingRef = useRef(false);
   const canTalk =
-    status === "connected" && participants > 1 && !isTranslating && Platform.OS !== "web";
+    status === "connected" &&
+    participants > 1 &&
+    isMyTurn &&
+    !isProcessing &&
+    !isRecording;
+
+  const turnLabel = (() => {
+    if (participants < 2) {
+      return "Waiting for partner";
+    }
+    if (isProcessing) {
+      return "Translating...";
+    }
+    if (isMyTurn) {
+      return "Your turn to speak";
+    }
+    return "Partner's turn";
+  })();
+
+  const turnColor = (() => {
+    if (isProcessing) {
+      return "#eab308";
+    }
+    if (isMyTurn) {
+      return "#22c55e";
+    }
+    return "#64748b";
+  })();
 
   useEffect(() => {
     setRecordError(null);
   }, [errorMessage]);
 
-  const handlePressIn = async () => {
-    if (!canTalk) {
-      return;
-    }
+  const stopTalking = useCallback(async () => {
+    const wasHolding = holdingRef.current;
+    holdingRef.current = false;
 
-    try {
-      setRecordError(null);
-      await onStartRecording();
-    } catch (error) {
-      setRecordError(
-        error instanceof Error ? error.message : "Could not start recording",
-      );
-    }
-  };
-
-  const handlePressOut = async () => {
-    if (!isRecording) {
+    if (!wasHolding && !isRecording) {
       return;
     }
 
@@ -106,7 +124,47 @@ export function SessionScreen({
         error instanceof Error ? error.message : "Could not stop recording",
       );
     }
+  }, [isRecording, onStopRecording]);
+
+  const handleTalkStart = async () => {
+    if (!canTalk || holdingRef.current || isRecording) {
+      return;
+    }
+
+    holdingRef.current = true;
+
+    try {
+      setRecordError(null);
+      await onStartRecording();
+    } catch (error) {
+      holdingRef.current = false;
+      setRecordError(
+        error instanceof Error ? error.message : "Could not start recording",
+      );
+    }
   };
+
+  const handleTalkEnd = () => {
+    void stopTalking();
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    const handleGlobalRelease = () => {
+      void stopTalking();
+    };
+
+    document.addEventListener("pointerup", handleGlobalRelease, true);
+    document.addEventListener("pointercancel", handleGlobalRelease, true);
+
+    return () => {
+      document.removeEventListener("pointerup", handleGlobalRelease, true);
+      document.removeEventListener("pointercancel", handleGlobalRelease, true);
+    };
+  }, [stopTalking]);
 
   return (
     <View style={styles.container}>
@@ -150,21 +208,32 @@ export function SessionScreen({
         ) : null}
       </View>
 
-      {Platform.OS === "web" ? (
+      <View style={[styles.turnCard, { borderColor: turnColor }]}>
+        <View style={[styles.turnDot, { backgroundColor: turnColor }]} />
+        <Text style={[styles.turnText, { color: turnColor }]}>{turnLabel}</Text>
+      </View>
+
+      {participants < 2 ? (
         <Text style={styles.hint}>
-          Use your phone for push-to-talk. This browser view will receive
-          translations and play them automatically.
+          Waiting for a second participant to join before turns begin.
         </Text>
-      ) : participants < 2 ? (
-        <Text style={styles.hint}>
-          Waiting for a second participant to join before you can talk.
-        </Text>
-      ) : (
+      ) : isMyTurn ? (
         <Text style={styles.hint}>
           Hold the button, speak in {languageLabel(myLang)}, then release.
           {partnerLang
             ? ` Your partner hears ${languageLabel(partnerLang)}.`
             : ""}
+          {Platform.OS === "web"
+            ? " Allow microphone access when your browser asks."
+            : ""}
+        </Text>
+      ) : isProcessing ? (
+        <Text style={styles.hint}>
+          Hang on while the last message is translated.
+        </Text>
+      ) : (
+        <Text style={styles.hint}>
+          Wait for your turn. You'll hear the translation automatically.
         </Text>
       )}
 
@@ -172,17 +241,26 @@ export function SessionScreen({
         style={[
           styles.talkButton,
           isRecording && styles.talkButtonActive,
-          !canTalk && styles.talkButtonDisabled,
+          !canTalk && !isRecording && styles.talkButtonDisabled,
         ]}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        disabled={!canTalk}
+        onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
+        onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
+        // RN Web forwards these to the DOM; more reliable than press in/out on mouse.
+        onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
+        onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
+        onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
+        disabled={Platform.OS !== "web" && !canTalk && !isRecording}
+        accessibilityState={{ disabled: !canTalk && !isRecording }}
       >
-        {isTranslating ? (
+        {isProcessing ? (
           <ActivityIndicator color="#ffffff" />
         ) : (
           <Text style={styles.talkButtonText}>
-            {isRecording ? "Listening..." : "Hold to talk"}
+            {isRecording
+              ? "Listening..."
+              : isMyTurn
+                ? "Hold to talk"
+                : "Wait for your turn"}
           </Text>
         )}
       </Pressable>
@@ -285,6 +363,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 20,
+  },
+  turnCard: {
+    marginTop: 20,
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  turnDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  turnText: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   talkButton: {
     marginTop: 20,

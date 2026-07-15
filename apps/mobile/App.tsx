@@ -42,11 +42,20 @@ export default function App() {
 
   const audio = useAudio({
     onAudioReady: socket.sendAudioChunk,
+    enabled: inSession,
   });
 
   useEffect(() => {
     playAudioRef.current = audio.playAudioBase64;
   }, [audio.playAudioBase64]);
+
+  useEffect(() => {
+    if (!inSession || socket.isMyTurn || !audio.isRecording) {
+      return;
+    }
+
+    void audio.stopRecording();
+  }, [audio.isRecording, audio.stopRecording, inSession, socket.isMyTurn]);
 
   const content = useMemo(() => {
     if (screen === "settings") {
@@ -70,12 +79,14 @@ export default function App() {
           participantId={socket.participantId}
           errorMessage={socket.errorMessage}
           isRecording={audio.isRecording}
-          isTranslating={socket.isTranslating}
+          isMyTurn={socket.isMyTurn}
+          isProcessing={socket.isProcessing}
           lastSent={socket.lastSent}
           lastReceived={socket.lastReceived}
           onStartRecording={audio.startRecording}
           onStopRecording={audio.stopRecording}
           onLeave={() => {
+            audio.releaseMicrophone();
             socket.disconnect();
             setActiveRoomCode("");
             setScreen("home");
@@ -105,6 +116,7 @@ export default function App() {
   }, [
     activeRoomCode,
     audio.isRecording,
+    audio.releaseMicrophone,
     audio.startRecording,
     audio.stopRecording,
     myLang,
@@ -112,7 +124,8 @@ export default function App() {
     screen,
     socket.disconnect,
     socket.errorMessage,
-    socket.isTranslating,
+    socket.isMyTurn,
+    socket.isProcessing,
     socket.lastReceived,
     socket.lastSent,
     socket.partnerLang,

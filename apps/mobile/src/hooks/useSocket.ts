@@ -4,6 +4,7 @@ import { io, Socket } from "socket.io-client";
 import { SERVER_URL, type LanguageCode } from "../config";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
+type TurnPhase = "waiting" | "speaking" | "processing";
 
 export type TranslationResult = {
   roomCode: string;
@@ -17,12 +18,19 @@ export type TranslationResult = {
   latencyMs: number;
 };
 
+type TurnState = {
+  turnParticipantId: string | null;
+  phase: TurnPhase;
+  version: number;
+};
+
 type JoinedRoomPayload = {
   roomCode: string;
   participantId: string;
   participants: number;
   myLang: LanguageCode;
   partnerLang?: LanguageCode;
+  turnState?: TurnState;
 };
 
 type UseSocketOptions = {
@@ -40,30 +48,69 @@ export function useSocket({
 }: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const onIncomingRef = useRef(onIncomingTranslation);
+  const turnStateRef = useRef<TurnState>({
+    turnParticipantId: null,
+    phase: "waiting",
+    version: 0,
+  });
+  const participantIdRef = useRef<string | null>(null);
+
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [participants, setParticipants] = useState(0);
   const [partnerLang, setPartnerLang] = useState<LanguageCode | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isTranslating, setIsTranslating] = useState(false);
+  const [turnParticipantId, setTurnParticipantId] = useState<string | null>(
+    null,
+  );
+  const [turnPhase, setTurnPhase] = useState<TurnPhase>("waiting");
   const [lastSent, setLastSent] = useState<TranslationResult | null>(null);
   const [lastReceived, setLastReceived] = useState<TranslationResult | null>(
     null,
   );
 
+  const isMyTurn =
+    participantId !== null &&
+    turnParticipantId === participantId &&
+    turnPhase === "speaking";
+  const isProcessing = turnPhase === "processing";
+
   useEffect(() => {
     onIncomingRef.current = onIncomingTranslation;
   }, [onIncomingTranslation]);
+
+  useEffect(() => {
+    participantIdRef.current = participantId;
+  }, [participantId]);
+
+  const applyTurnState = useCallback((turnState: TurnState) => {
+    if (turnState.version < turnStateRef.current.version) {
+      return;
+    }
+
+    turnStateRef.current = turnState;
+    setTurnParticipantId(turnState.turnParticipantId);
+    setTurnPhase(turnState.phase);
+  }, []);
+
+  const resetTurnState = useCallback(() => {
+    applyTurnState({
+      turnParticipantId: null,
+      phase: "waiting",
+      version: 0,
+    });
+  }, [applyTurnState]);
 
   const disconnect = useCallback(() => {
     socketRef.current?.disconnect();
     socketRef.current = null;
     setStatus("disconnected");
     setParticipantId(null);
+    participantIdRef.current = null;
     setParticipants(0);
     setPartnerLang(null);
-    setIsTranslating(false);
-  }, []);
+    resetTurnState();
+  }, [resetTurnState]);
 
   const sendAudioChunk = useCallback(
     (audioBase64: string, format: string) => {
@@ -73,7 +120,18 @@ export function useSocket({
         return;
       }
 
-      setIsTranslating(true);
+      const turn = turnStateRef.current;
+      const me = participantIdRef.current;
+
+      if (
+        turn.phase !== "speaking" ||
+        !me ||
+        turn.turnParticipantId !== me
+      ) {
+        setErrorMessage("Not your turn");
+        return;
+      }
+
       setErrorMessage(null);
       socket.emit("audio_chunk", {
         audioBase64,
@@ -111,59 +169,85 @@ export function useSocket({
 
     socket.on("disconnect", () => {
       setStatus("disconnected");
-      setIsTranslating(false);
     });
 
     socket.on("connect_error", (error) => {
       setStatus("error");
       setErrorMessage(error.message);
-      setIsTranslating(false);
     });
 
     socket.on("joined_room", (payload: JoinedRoomPayload) => {
       setParticipantId(payload.participantId);
+      participantIdRef.current = payload.participantId;
       setParticipants(payload.participants);
       setPartnerLang(payload.partnerLang ?? null);
+      if (payload.turnState) {
+        applyTurnState(payload.turnState);
+      }
     });
 
     socket.on(
       "participant_joined",
-      (payload: { participants: number; myLang?: LanguageCode }) => {
+      (payload: {
+        participants: number;
+        myLang?: LanguageCode;
+        turnState?: TurnState;
+      }) => {
         setParticipants(payload.participants);
         if (payload.myLang) {
           setPartnerLang(payload.myLang);
         }
+        if (payload.turnState) {
+          applyTurnState(payload.turnState);
+        }
       },
     );
 
-    socket.on("participant_left", (payload: { participants: number }) => {
-      setParticipants(payload.participants);
-      if (payload.participants < 2) {
-        setPartnerLang(null);
-      }
-    });
+    socket.on(
+      "participant_left",
+      (payload: { participants: number; turnState?: TurnState }) => {
+        setParticipants(payload.participants);
+        if (payload.participants < 2) {
+          setPartnerLang(null);
+          resetTurnState();
+        } else if (payload.turnState) {
+          applyTurnState(payload.turnState);
+        }
+      },
+    );
+
+    socket.on(
+      "turn_state",
+      (payload: { roomCode: string } & TurnState) => {
+        applyTurnState(payload);
+      },
+    );
 
     socket.on("translation_result", (payload: TranslationResult) => {
       setLastReceived(payload);
-      setIsTranslating(false);
       onIncomingRef.current?.(payload);
     });
 
     socket.on("translation_sent", (payload: TranslationResult) => {
       setLastSent(payload);
-      setIsTranslating(false);
     });
 
     socket.on("error", (payload: { message?: string }) => {
       setErrorMessage(payload.message ?? "Unknown socket error");
-      setIsTranslating(false);
     });
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [disconnect, enabled, myLang, roomCode]);
+  }, [
+    applyTurnState,
+    disconnect,
+    enabled,
+    myLang,
+    resetTurnState,
+    roomCode,
+  ]);
 
   return {
     status,
@@ -171,10 +255,13 @@ export function useSocket({
     participants,
     partnerLang,
     errorMessage,
-    isTranslating,
+    turnParticipantId,
+    turnPhase,
+    isMyTurn,
+    isProcessing,
     lastSent,
     lastReceived,
     disconnect,
     sendAudioChunk,
   };
-}
+};
