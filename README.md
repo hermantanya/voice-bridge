@@ -2,7 +2,7 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in theirs.
 
-**v1.0** — English ↔ Hebrew, turn-based, phone + browser.
+**v1.0** — English ↔ Hebrew, push-to-talk, first-come-first-serve turns, phone + browser.
 
 ## What it does
 
@@ -164,20 +164,45 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 - Two participants per room only
 - English and Hebrew only
-- Turn-based (one speaker at a time)
+- One speaker at a time; floor is open until someone presses (not pre-assigned)
 - ~3–6 second latency per message
 - Web push-to-talk requires Chrome; mic active only while holding button
 - Language setting applies on room join — rejoin after changes
 
 ## Roadmap
 
+### Shipped and next (v1.x)
+
 | Version | Features |
 |---|---|
-| **v1.0** ✅ | EN ↔ HE, turn-based, phone + web |
-| v1.1 | Russian |
-| v1.2 | Voice matching |
-| v1.3 | 10+ languages, auto-detect |
-| v1.4 | App Store / PWA distribution |
+| **v1.0** (done) | EN ↔ HE, 2 participants, push-to-talk, first-come-first-serve turns, phone + web |
+| v1.1 | + Russian |
+| v1.2 | Voice matching (speaker tone in 1:1) |
+| v1.3 | Auto-detect spoken language; user sets preferred hearing language only |
+| v1.4 | App Store / PWA, basic user profiles |
+
+### Group and table (v2–v3)
+
+| Version | Features |
+|---|---|
+| v2.0 | Optional hands-free (VAD); pass-through languages (transcribe, no TTS); saved language prefs |
+| v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
+| v2.5 | Per-persona mute/unmute; per-speaker transcripts |
+| v3.0 | Dinner table mode — multi-lingual room, mute matrix, mixed pass-through |
+| v3.1 | Minute-based pricing + usage dashboard |
+
+### Product arc
+
+v1 is a two-person walkie-talkie interpreter. v2 adds group rooms, filters, and hands-free options. v3 targets a dinner-table interpretation layer where each person hears what they need and can mute what they don't.
+
+```mermaid
+flowchart LR
+  v1[v1_TwoPerson] --> v2[v2_GroupRoom]
+  v2 --> v3[v3_DinnerTable]
+  v3 --> vision[VISION_v4plus]
+```
+
+Long-term north star (wearables, multimodal intent): see [VISION.md](VISION.md).
 
 ## License
 
