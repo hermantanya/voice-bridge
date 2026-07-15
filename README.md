@@ -134,6 +134,22 @@ export const SERVER_URL = "https://your-app.up.railway.app";
 - Never commit `.env` files
 - Before pushing: `git grep -iE "sk-|api_key" -- ':!*.example'`
 
+### Going public on GitHub
+
+The mobile app points at your Railway URL. If the repo is public, anyone could use that endpoint and spend your OpenAI credits.
+
+**Built-in rate limits** (per IP / per connection):
+
+| Variable | Default | Protects |
+|---|---|---|
+| `RATE_LIMIT_TRANSLATE_PER_HOUR` | 30 | REST `/api/translate` |
+| `RATE_LIMIT_AUDIO_PER_HOUR` | 120 | WebSocket translations |
+| `RATE_LIMIT_JOIN_PER_MINUTE` | 20 | Room join attempts |
+
+Set these in Railway Variables. For personal use, defaults are plenty. Tighten if needed.
+
+**Optional later:** user auth, per-room tokens, or requiring everyone to self-host their own Railway backend.
+
 ## Known limitations (v1.0)
 
 - Two participants per room only
