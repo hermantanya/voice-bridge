@@ -5,9 +5,11 @@ node_modules/
 .env
 .env.*
 !.env.example
+!apps/mobile/.env.example
 server/.env
 server/.env.*
 !server/.env.example
+apps/mobile/.env
 
 # Build output
 dist/
