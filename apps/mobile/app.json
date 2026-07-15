@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Voice Bridge uses your microphone to hear and translate your speech."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +24,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Voice Bridge uses your microphone to hear and translate your speech."
+        }
+      ]
     ]
   }
 }

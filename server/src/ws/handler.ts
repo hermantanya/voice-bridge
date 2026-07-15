@@ -76,7 +76,14 @@ export function registerSocketHandlers(io: Server): void {
         const audio = Buffer.from(payload.audioBase64, "base64");
         const sourceLang =
           payload.sourceLang ?? (socket.data.speakLang as string) ?? "en";
-        const targetLang = payload.targetLang ?? "he";
+
+        const socketsInRoom = await io.in(code).fetchSockets();
+        const listener = socketsInRoom.find((s) => s.id !== socket.id);
+        const targetLang = listener
+          ? ((listener.data.hearLang as string) ?? "he")
+          : ((payload.targetLang as string) ??
+            (socket.data.hearLang as string) ??
+            "he");
 
         const result = await runTranslationPipeline({
           audio,
