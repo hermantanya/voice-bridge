@@ -1,96 +1,158 @@
 # Voice Bridge
 
-Real-time voice translation for mobile — speak in one language, hear another in your headphones.
+Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in theirs.
 
-**v1.0 scope:** Turn-based bidirectional English ↔ Hebrew between two phones.
+**v1.0** — English ↔ Hebrew, turn-based, phone + browser.
+
+## What it does
+
+- Two people join the same room with a short code
+- Each person sets **My language** (English or Hebrew)
+- **First come, first serve:** whoever holds **Hold to talk** first speaks
+- Speech is transcribed, translated, and played to the other person
+- Transcripts appear on screen with latency timing
+
+## How to use it
+
+### 1. Set languages (before joining)
+
+On each device: **Language settings** → pick the language **you** speak.
+
+Example: Hebrew speaker sets Hebrew, English speaker sets English.
+
+> Language is sent when you join a room. If you change it later, leave and rejoin.
+
+### 2. Start a session
+
+| Device | Action |
+|---|---|
+| **Phone** | Create a new room (note the code) |
+| **Browser or second phone** | Enter the code → Join room |
+
+Both should show **2 participants**.
+
+### 3. Talk
+
+1. When both see **Ready — hold to talk**, either person can press first
+2. Hold the button, speak, then release
+3. Wait a few seconds for translation
+4. The other person hears the translated audio automatically
+5. Floor opens again — next person to press speaks
+
+### Testing with phone + Mac browser
+
+```bash
+# Terminal 1 — phone (Expo Go)
+cd apps/mobile
+npx expo start
+
+# Terminal 2 — browser
+cd apps/mobile
+npx expo start --web
+```
+
+Open `http://localhost:8081` in Chrome. Allow microphone when prompted.
+
+## Architecture
+
+```
+Phone/Browser                    Railway Server                    OpenAI
+     │                                │                              │
+     │  WebSocket (Socket.io)         │                              │
+     ├───────────────────────────────►│  Whisper STT                 │
+     │  audio_chunk / claim_turn      ├─────────────────────────────►│
+     │                                │  GPT-4o-mini translate       │
+     │◄───────────────────────────────┤  TTS                         │
+     │  translation_result + audio    │                              │
+```
 
 ## Project structure
 
 ```
 voice-bridge/
-├── server/          # Node.js backend (API proxy + WebSocket)
-└── apps/mobile/     # Expo React Native app (Step 3+)
+├── server/           # Node.js + Socket.io backend
+├── apps/mobile/      # Expo app (iOS, Android, web)
+├── package.json      # Railway deploy entry
+└── railway.toml      # Railway build config
 ```
 
-## Prerequisites
+## Server setup
+
+### Prerequisites
 
 - Node.js 20+
 - OpenAI API key with credits
-- Railway account (free tier) for hosting
-- Expo Go on your phone (for mobile testing)
 
-## Local development
-
-### 1. Install server dependencies
+### Local development
 
 ```bash
 cd server
 npm install
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY (never commit this file)
-```
-
-### 3. Start the server
-
-```bash
+cp .env.example .env   # add OPENAI_API_KEY
 npm run dev
-```
-
-### 4. Verify health check
-
-```bash
 curl http://localhost:3001/health
 ```
 
-### 5. Test translation pipeline (requires OPENAI_API_KEY in .env)
+### Deploy to Railway
 
-Record a short English phrase, then:
+1. Push this repo to GitHub
+2. Railway → **Deploy from GitHub** → select the repo
+3. Root directory: **repository root** (uses `railway.toml`)
+4. Variables:
+   - `OPENAI_API_KEY` — your key (no trailing spaces)
+   - `CLIENT_ORIGIN` — `*` for dev, restrict in production
+5. Verify: `https://<your-app>.up.railway.app/health`
 
-```bash
-# macOS: record 3 seconds from mic
-rec -r 16000 -c 1 -b 16 test.wav trim 0 3
+### Point the app at your server
 
-curl -X POST "http://localhost:3001/api/translate?sourceLang=en&targetLang=he&format=wav" \
-  --data-binary @test.wav \
-  -o response.json
+Edit `apps/mobile/src/config.ts`:
 
-# Play translated audio (macOS)
-node -e "const r=require('./response.json');require('fs').writeFileSync('out.mp3',Buffer.from(r.audioBase64,'base64'))"
-afplay out.mp3
+```ts
+export const SERVER_URL = "https://your-app.up.railway.app";
 ```
 
-Expected `response.json` fields: `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
+## WebSocket events
 
-## Deploy to Railway
+| Event | Direction | Purpose |
+|---|---|---|
+| `join_room` | client → server | Join with room code and language |
+| `claim_turn` | client → server | Claim speaking turn (first press wins) |
+| `audio_chunk` | client → server | Send recorded audio |
+| `turn_state` | server → clients | Whose turn / processing state |
+| `translation_result` | server → listener | Translated audio + transcript |
+| `translation_sent` | server → speaker | Confirmation + transcript |
 
-1. Push this repo to GitHub.
-2. In [Railway](https://railway.app), create a new project → **Deploy from GitHub repo** → select `voice-bridge`.
-3. Set the **root directory** to `server` (Settings → Root Directory).
-4. Add environment variables in Railway → Variables:
-   - `OPENAI_API_KEY` = your key
-   - `CLIENT_ORIGIN` = `*` (tighten in production)
-5. Deploy and open the public URL + `/health`.
+## API
+
+`POST /api/translate?sourceLang=en&targetLang=he&format=wav` — send raw audio, get JSON with `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
+
+`GET /health` — server status.
 
 ## Security
 
-- API keys live only in `server/.env` (local) or Railway Variables (production).
-- Never commit `.env` files.
+- API keys live only in `server/.env` (local) or Railway Variables (production)
+- Never commit `.env` files
 - Before pushing: `git grep -iE "sk-|api_key" -- ':!*.example'`
+
+## Known limitations (v1.0)
+
+- Two participants per room only
+- English and Hebrew only
+- Turn-based (one speaker at a time)
+- ~3–6 second latency per message
+- Web push-to-talk requires Chrome; mic active only while holding button
+- Language setting applies on room join — rejoin after changes
 
 ## Roadmap
 
-- [x] Step 1: Backend skeleton + WebSocket
-- [x] Step 2: STT → translate → TTS pipeline
-- [ ] Step 3: Mobile app shell
-- [ ] Step 4: Audio capture + playback
-- [ ] Step 5: Turn-based bidirectional
-- [ ] Step 6: Polish + v1.0 release
+| Version | Features |
+|---|---|
+| **v1.0** ✅ | EN ↔ HE, turn-based, phone + web |
+| v1.1 | Russian |
+| v1.2 | Voice matching |
+| v1.3 | 10+ languages, auto-detect |
+| v1.4 | App Store / PWA distribution |
 
 ## License
 
-Private during development. Will go public at v1.0 milestone.
+Private during development.

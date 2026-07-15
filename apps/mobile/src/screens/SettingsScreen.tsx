@@ -39,12 +39,12 @@ export function SettingsScreen({
       </View>
 
       <View style={styles.exampleCard}>
-        <Text style={styles.exampleTitle}>For your setup</Text>
+        <Text style={styles.exampleTitle}>Tip</Text>
         <Text style={styles.exampleText}>
-          Phone → {languageLabel("he")}
+          Each device should use the language spoken on that device.
         </Text>
         <Text style={styles.exampleText}>
-          Browser → {languageLabel("en")}
+          Leave and rejoin the room after changing language.
         </Text>
       </View>
 
