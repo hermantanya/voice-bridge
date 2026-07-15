@@ -6,8 +6,11 @@ import {
   View,
 } from "react-native";
 
+import { languageLabel, type LanguageCode } from "../config";
+
 type HomeScreenProps = {
   roomCode: string;
+  myLang: LanguageCode;
   onRoomCodeChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -16,6 +19,7 @@ type HomeScreenProps = {
 
 export function HomeScreen({
   roomCode,
+  myLang,
   onRoomCodeChange,
   onCreateRoom,
   onJoinRoom,
@@ -28,8 +32,14 @@ export function HomeScreen({
     <View style={styles.container}>
       <Text style={styles.title}>Voice Bridge</Text>
       <Text style={styles.subtitle}>
-        Real-time voice translation between two phones
+        Real-time voice translation between two devices
       </Text>
+
+      <View style={styles.langBadge}>
+        <Text style={styles.langBadgeText}>
+          My language: {languageLabel(myLang)}
+        </Text>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Room code</Text>
@@ -64,7 +74,7 @@ export function HomeScreen({
       </View>
 
       <Pressable style={styles.linkButton} onPress={onOpenSettings}>
-        <Text style={styles.linkButtonText}>Language settings</Text>
+        <Text style={styles.linkButtonText}>Change my language</Text>
       </Pressable>
     </View>
   );
@@ -86,7 +96,20 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#94a3b8",
     fontSize: 16,
-    marginBottom: 32,
+    marginBottom: 16,
+  },
+  langBadge: {
+    alignSelf: "center",
+    backgroundColor: "#1e293b",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 24,
+  },
+  langBadgeText: {
+    color: "#60a5fa",
+    fontSize: 15,
+    fontWeight: "600",
   },
   card: {
     backgroundColor: "#1e293b",

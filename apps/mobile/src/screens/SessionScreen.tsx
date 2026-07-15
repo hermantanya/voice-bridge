@@ -13,8 +13,8 @@ import type { TranslationResult } from "../hooks/useSocket";
 
 type SessionScreenProps = {
   roomCode: string;
-  speakLang: LanguageCode;
-  hearLang: LanguageCode;
+  myLang: LanguageCode;
+  partnerLang: LanguageCode | null;
   status: "connecting" | "connected" | "disconnected" | "error";
   participants: number;
   participantId: string | null;
@@ -56,8 +56,8 @@ function statusLabel(status: SessionScreenProps["status"]): string {
 
 export function SessionScreen({
   roomCode,
-  speakLang,
-  hearLang,
+  myLang,
+  partnerLang,
   status,
   participants,
   participantId,
@@ -134,18 +134,16 @@ export function SessionScreen({
         </View>
 
         <View style={styles.row}>
-          <Text style={styles.label}>I speak</Text>
-          <Text style={styles.value}>{languageLabel(speakLang)}</Text>
+          <Text style={styles.label}>My language</Text>
+          <Text style={styles.value}>{languageLabel(myLang)}</Text>
         </View>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>I hear</Text>
-          <Text style={styles.value}>{languageLabel(hearLang)}</Text>
-        </View>
-
-        <Text style={styles.langNote}>
-          "I hear" is the language you'll receive when the other person talks.
-        </Text>
+        {partnerLang ? (
+          <View style={styles.row}>
+            <Text style={styles.label}>Partner speaks</Text>
+            <Text style={styles.value}>{languageLabel(partnerLang)}</Text>
+          </View>
+        ) : null}
 
         {participantId ? (
           <Text style={styles.meta}>Your ID: {participantId.slice(0, 8)}...</Text>
@@ -163,8 +161,10 @@ export function SessionScreen({
         </Text>
       ) : (
         <Text style={styles.hint}>
-          Hold the button, speak in {languageLabel(speakLang)}, then release.
-          The other person hears {languageLabel(hearLang)}.
+          Hold the button, speak in {languageLabel(myLang)}, then release.
+          {partnerLang
+            ? ` Your partner hears ${languageLabel(partnerLang)}.`
+            : ""}
         </Text>
       )}
 
@@ -279,11 +279,6 @@ const styles = StyleSheet.create({
   meta: {
     color: "#64748b",
     fontSize: 12,
-  },
-  langNote: {
-    color: "#64748b",
-    fontSize: 13,
-    lineHeight: 18,
   },
   hint: {
     color: "#94a3b8",

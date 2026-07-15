@@ -25,27 +25,22 @@ export async function runTranslationPipeline(
   const startedAt = Date.now();
   const format = input.format ?? "webm";
 
-  const { text: sourceText, language: detectedLang } = await transcribe(
-    input.audio,
-    format,
-  );
+  const sourceText = await transcribe(input.audio, input.sourceLang, format);
 
   if (!sourceText) {
     throw new Error("No speech detected in audio");
   }
 
-  const sourceLang = detectedLang || input.sourceLang;
-
   const translatedText = await translate(
     sourceText,
-    sourceLang,
+    input.sourceLang,
     input.targetLang,
   );
 
   const audio = await synthesize(translatedText);
 
   return {
-    sourceLang,
+    sourceLang: input.sourceLang,
     targetLang: input.targetLang,
     sourceText,
     translatedText,

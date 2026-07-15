@@ -19,8 +19,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [roomCode, setRoomCode] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
-  const [speakLang, setSpeakLang] = useState<LanguageCode>("en");
-  const [hearLang, setHearLang] = useState<LanguageCode>("en");
+  const [myLang, setMyLang] = useState<LanguageCode>("en");
 
   const inSession = screen === "session" && !!activeRoomCode;
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
@@ -36,8 +35,7 @@ export default function App() {
 
   const socket = useSocket({
     roomCode: activeRoomCode,
-    speakLang,
-    hearLang,
+    myLang,
     enabled: inSession,
     onIncomingTranslation: handleIncomingTranslation,
   });
@@ -54,10 +52,8 @@ export default function App() {
     if (screen === "settings") {
       return (
         <SettingsScreen
-          speakLang={speakLang}
-          hearLang={hearLang}
-          onSpeakLangChange={setSpeakLang}
-          onHearLangChange={setHearLang}
+          myLang={myLang}
+          onMyLangChange={setMyLang}
           onBack={() => setScreen("home")}
         />
       );
@@ -67,8 +63,8 @@ export default function App() {
       return (
         <SessionScreen
           roomCode={activeRoomCode}
-          speakLang={speakLang}
-          hearLang={hearLang}
+          myLang={myLang}
+          partnerLang={socket.partnerLang}
           status={socket.status}
           participants={socket.participants}
           participantId={socket.participantId}
@@ -91,6 +87,7 @@ export default function App() {
     return (
       <HomeScreen
         roomCode={roomCode}
+        myLang={myLang}
         onRoomCodeChange={(value) => setRoomCode(value.toUpperCase())}
         onCreateRoom={() => {
           const code = generateRoomCode();
@@ -110,7 +107,7 @@ export default function App() {
     audio.isRecording,
     audio.startRecording,
     audio.stopRecording,
-    hearLang,
+    myLang,
     roomCode,
     screen,
     socket.disconnect,
@@ -118,10 +115,10 @@ export default function App() {
     socket.isTranslating,
     socket.lastReceived,
     socket.lastSent,
+    socket.partnerLang,
     socket.participantId,
     socket.participants,
     socket.status,
-    speakLang,
   ]);
 
   return (
