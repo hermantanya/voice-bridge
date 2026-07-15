@@ -52,7 +52,9 @@ export function SettingsScreen({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Languages</Text>
-      <Text style={styles.subtitle}>Set opposite languages on each device</Text>
+      <Text style={styles.subtitle}>
+        "I hear" = the language you want when the other person talks
+      </Text>
 
       <View style={styles.presetCard}>
         <Text style={styles.presetTitle}>Quick setup</Text>
@@ -60,7 +62,7 @@ export function SettingsScreen({
           style={styles.presetButton}
           onPress={() => {
             onSpeakLangChange("en");
-            onHearLangChange("he");
+            onHearLangChange("en");
           }}
         >
           <Text style={styles.presetButtonText}>I'm the English speaker</Text>
@@ -69,13 +71,13 @@ export function SettingsScreen({
           style={styles.presetButton}
           onPress={() => {
             onSpeakLangChange("he");
-            onHearLangChange("en");
+            onHearLangChange("he");
           }}
         >
           <Text style={styles.presetButtonText}>I'm the Hebrew speaker</Text>
         </Pressable>
         <Text style={styles.presetHint}>
-          Example: phone = Hebrew speaker, browser = English speaker
+          Phone: Hebrew speaker · Browser: English speaker
         </Text>
       </View>
 

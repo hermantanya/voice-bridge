@@ -20,7 +20,7 @@ export default function App() {
   const [roomCode, setRoomCode] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [speakLang, setSpeakLang] = useState<LanguageCode>("en");
-  const [hearLang, setHearLang] = useState<LanguageCode>("he");
+  const [hearLang, setHearLang] = useState<LanguageCode>("en");
 
   const inSession = screen === "session" && !!activeRoomCode;
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
