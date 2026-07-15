@@ -21,7 +21,7 @@ export function registerSocketHandlers(io: Server): void {
   io.on("connection", (socket: Socket) => {
     console.log(`client connected: ${socket.id}`);
 
-    socket.on("join_room", (payload: JoinRoomPayload) => {
+    socket.on("join_room", async (payload: JoinRoomPayload) => {
       const { roomCode, speakLang, hearLang } = payload;
 
       if (!roomCode?.trim()) {
@@ -30,6 +30,8 @@ export function registerSocketHandlers(io: Server): void {
       }
 
       const code = roomCode.trim().toUpperCase();
+      const myLang = speakLang ?? hearLang ?? "en";
+
       socket.join(code);
 
       if (!rooms.has(code)) {
@@ -38,25 +40,29 @@ export function registerSocketHandlers(io: Server): void {
       rooms.get(code)!.add(socket.id);
 
       socket.data.roomCode = code;
-      socket.data.speakLang = speakLang ?? "en";
-      socket.data.hearLang = hearLang ?? "he";
+      socket.data.speakLang = myLang;
+      socket.data.hearLang = myLang;
 
       const participants = rooms.get(code)!.size;
+      const socketsInRoom = await io.in(code).fetchSockets();
+      const partnerSocket = socketsInRoom.find((s) => s.id !== socket.id);
+      const partnerLang = partnerSocket?.data.speakLang as string | undefined;
 
       socket.emit("joined_room", {
         roomCode: code,
         participantId: socket.id,
         participants,
-        speakLang: socket.data.speakLang,
-        hearLang: socket.data.hearLang,
+        myLang,
+        partnerLang,
       });
 
       socket.to(code).emit("participant_joined", {
         participantId: socket.id,
         participants,
+        myLang,
       });
 
-      console.log(`socket ${socket.id} joined room ${code} (${participants} participants)`);
+      console.log(`socket ${socket.id} joined room ${code} (${participants} participants, lang=${myLang})`);
     });
 
     socket.on("audio_chunk", async (payload: AudioChunkPayload) => {
@@ -80,10 +86,8 @@ export function registerSocketHandlers(io: Server): void {
         const socketsInRoom = await io.in(code).fetchSockets();
         const listener = socketsInRoom.find((s) => s.id !== socket.id);
         const targetLang = listener
-          ? ((listener.data.hearLang as string) ?? "he")
-          : ((payload.targetLang as string) ??
-            (socket.data.hearLang as string) ??
-            "he");
+          ? ((listener.data.speakLang as string) ?? "en")
+          : ((payload.targetLang as string) ?? "en");
 
         const result = await runTranslationPipeline({
           audio,

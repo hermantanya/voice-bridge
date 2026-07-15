@@ -21,22 +21,20 @@ type JoinedRoomPayload = {
   roomCode: string;
   participantId: string;
   participants: number;
-  speakLang: LanguageCode;
-  hearLang: LanguageCode;
+  myLang: LanguageCode;
+  partnerLang?: LanguageCode;
 };
 
 type UseSocketOptions = {
   roomCode: string;
-  speakLang: LanguageCode;
-  hearLang: LanguageCode;
+  myLang: LanguageCode;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
 
 export function useSocket({
   roomCode,
-  speakLang,
-  hearLang,
+  myLang,
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
@@ -45,6 +43,7 @@ export function useSocket({
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [participants, setParticipants] = useState(0);
+  const [partnerLang, setPartnerLang] = useState<LanguageCode | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [lastSent, setLastSent] = useState<TranslationResult | null>(null);
@@ -62,6 +61,7 @@ export function useSocket({
     setStatus("disconnected");
     setParticipantId(null);
     setParticipants(0);
+    setPartnerLang(null);
     setIsTranslating(false);
   }, []);
 
@@ -78,10 +78,10 @@ export function useSocket({
       socket.emit("audio_chunk", {
         audioBase64,
         format,
-        sourceLang: speakLang,
+        sourceLang: myLang,
       });
     },
-    [speakLang],
+    [myLang],
   );
 
   useEffect(() => {
@@ -102,7 +102,11 @@ export function useSocket({
 
     socket.on("connect", () => {
       setStatus("connected");
-      socket.emit("join_room", { roomCode, speakLang, hearLang });
+      socket.emit("join_room", {
+        roomCode,
+        speakLang: myLang,
+        hearLang: myLang,
+      });
     });
 
     socket.on("disconnect", () => {
@@ -119,14 +123,24 @@ export function useSocket({
     socket.on("joined_room", (payload: JoinedRoomPayload) => {
       setParticipantId(payload.participantId);
       setParticipants(payload.participants);
+      setPartnerLang(payload.partnerLang ?? null);
     });
 
-    socket.on("participant_joined", (payload: { participants: number }) => {
-      setParticipants(payload.participants);
-    });
+    socket.on(
+      "participant_joined",
+      (payload: { participants: number; myLang?: LanguageCode }) => {
+        setParticipants(payload.participants);
+        if (payload.myLang) {
+          setPartnerLang(payload.myLang);
+        }
+      },
+    );
 
     socket.on("participant_left", (payload: { participants: number }) => {
       setParticipants(payload.participants);
+      if (payload.participants < 2) {
+        setPartnerLang(null);
+      }
     });
 
     socket.on("translation_result", (payload: TranslationResult) => {
@@ -149,12 +163,13 @@ export function useSocket({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [disconnect, enabled, hearLang, roomCode, speakLang]);
+  }, [disconnect, enabled, myLang, roomCode]);
 
   return {
     status,
     participantId,
     participants,
+    partnerLang,
     errorMessage,
     isTranslating,
     lastSent,
