@@ -25,7 +25,6 @@ type TurnState = {
 
 type RoomState = {
   participantIds: Set<string>;
-  hostId: string | null;
   turnParticipantId: string | null;
   phase: TurnPhase;
   version: number;
@@ -36,7 +35,6 @@ const rooms = new Map<string, RoomState>();
 function createRoomState(): RoomState {
   return {
     participantIds: new Set(),
-    hostId: null,
     turnParticipantId: null,
     phase: "waiting",
     version: 0,
@@ -76,10 +74,6 @@ function syncRoomParticipants(
   }
 
   room.participantIds.add(joiningSocketId);
-
-  if (!room.hostId || !room.participantIds.has(room.hostId)) {
-    room.hostId = room.participantIds.values().next().value ?? joiningSocketId;
-  }
 
   if (
     room.turnParticipantId &&
@@ -128,6 +122,14 @@ export function registerSocketHandlers(io: Server): void {
       socket.data.hearLang = myLang;
 
       const participants = room.participantIds.size;
+
+      // Never pre-assign: when both are present, floor stays open until
+      // someone presses hold-to-talk (claim_turn).
+      if (participants >= 2 && room.phase !== "processing") {
+        room.turnParticipantId = null;
+        room.phase = "waiting";
+      }
+
       const partnerSocket = socketsInRoom.find((s) => s.id !== socket.id);
       const partnerLang = partnerSocket?.data.speakLang as string | undefined;
       const turnState = getRoomTurnState(room);
@@ -147,6 +149,10 @@ export function registerSocketHandlers(io: Server): void {
         myLang,
         turnState,
       });
+
+      if (participants >= 2 && room.phase === "waiting") {
+        emitTurnState(io, code, room);
+      }
 
       console.log(
         `socket ${socket.id} joined room ${code} (${participants} participants, lang=${myLang}, turn=${room.turnParticipantId})`,
@@ -279,10 +285,6 @@ export function registerSocketHandlers(io: Server): void {
       if (code && rooms.has(code)) {
         const room = rooms.get(code)!;
         room.participantIds.delete(socket.id);
-
-        if (room.hostId === socket.id) {
-          room.hostId = room.participantIds.values().next().value ?? null;
-        }
 
         if (room.participantIds.size === 0) {
           rooms.delete(code);

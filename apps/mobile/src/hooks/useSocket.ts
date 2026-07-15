@@ -121,10 +121,17 @@ export function useSocket({
         return;
       }
 
+      const timeout = setTimeout(() => {
+        setErrorMessage("Could not claim turn — try again");
+        resolve(false);
+      }, 3000);
+
       socket.emit(
         "claim_turn",
         {},
         (response?: { ok?: boolean; message?: string }) => {
+          clearTimeout(timeout);
+
           if (response?.ok) {
             const me = participantIdRef.current;
             if (me) {
