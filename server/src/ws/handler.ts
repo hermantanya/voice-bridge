@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 
 import { runTranslationPipeline } from "../pipeline/index.js";
+import { rejectIfAudioLimited, type SocketRateLimits } from "./rateLimit.js";
 
 type JoinRoomPayload = {
   roomCode: string;
@@ -90,7 +91,10 @@ function openTurnFloor(io: Server, roomCode: string, room: RoomState): void {
   emitTurnState(io, roomCode, room);
 }
 
-export function registerSocketHandlers(io: Server): void {
+export function registerSocketHandlers(
+  io: Server,
+  rateLimits: SocketRateLimits,
+): void {
   io.on("connection", (socket: Socket) => {
     console.log(`client connected: ${socket.id}`);
 
@@ -216,6 +220,12 @@ export function registerSocketHandlers(io: Server): void {
 
       if (!payload?.audioBase64) {
         socket.emit("error", { message: "audioBase64 is required" });
+        return;
+      }
+
+      const rateLimitMessage = rejectIfAudioLimited(socket.id, rateLimits);
+      if (rateLimitMessage) {
+        socket.emit("error", { message: rateLimitMessage });
         return;
       }
 
