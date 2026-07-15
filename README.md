@@ -181,4 +181,4 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 ## License
 
-Private during development.
+Personal project in real-time voice translation. All rights reserved.
