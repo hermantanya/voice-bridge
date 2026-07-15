@@ -52,7 +52,32 @@ export function SettingsScreen({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Languages</Text>
-      <Text style={styles.subtitle}>v1.0 supports English and Hebrew</Text>
+      <Text style={styles.subtitle}>Set opposite languages on each device</Text>
+
+      <View style={styles.presetCard}>
+        <Text style={styles.presetTitle}>Quick setup</Text>
+        <Pressable
+          style={styles.presetButton}
+          onPress={() => {
+            onSpeakLangChange("en");
+            onHearLangChange("he");
+          }}
+        >
+          <Text style={styles.presetButtonText}>I'm the English speaker</Text>
+        </Pressable>
+        <Pressable
+          style={styles.presetButton}
+          onPress={() => {
+            onSpeakLangChange("he");
+            onHearLangChange("en");
+          }}
+        >
+          <Text style={styles.presetButtonText}>I'm the Hebrew speaker</Text>
+        </Pressable>
+        <Text style={styles.presetHint}>
+          Example: phone = Hebrew speaker, browser = English speaker
+        </Text>
+      </View>
 
       <View style={styles.card}>
         <LanguagePicker
@@ -90,7 +115,35 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#94a3b8",
     fontSize: 15,
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  presetCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+    marginBottom: 16,
+  },
+  presetTitle: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  presetButton: {
+    backgroundColor: "#334155",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  presetButtonText: {
+    color: "#f8fafc",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  presetHint: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 18,
   },
   card: {
     backgroundColor: "#1e293b",
