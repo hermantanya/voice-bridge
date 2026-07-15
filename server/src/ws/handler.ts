@@ -64,18 +64,6 @@ function emitTurnState(io: Server, roomCode: string, room: RoomState): void {
   });
 }
 
-function getOtherParticipantId(
-  room: RoomState,
-  participantId: string,
-): string | null {
-  for (const id of room.participantIds) {
-    if (id !== participantId) {
-      return id;
-    }
-  }
-  return null;
-}
-
 function syncRoomParticipants(
   room: RoomState,
   liveSocketIds: Set<string>,
@@ -102,41 +90,9 @@ function syncRoomParticipants(
   }
 }
 
-function startTurnForRoom(io: Server, roomCode: string, room: RoomState): void {
-  if (room.participantIds.size < 2 || !room.hostId) {
-    room.turnParticipantId = null;
-    room.phase = "waiting";
-    emitTurnState(io, roomCode, room);
-    return;
-  }
-
-  room.turnParticipantId = room.hostId;
-  room.phase = "speaking";
-  emitTurnState(io, roomCode, room);
-}
-
-function ensureActiveTurn(io: Server, roomCode: string, room: RoomState): void {
-  if (room.participantIds.size >= 2 && room.phase === "waiting") {
-    startTurnForRoom(io, roomCode, room);
-  }
-}
-
-function passTurnToPartner(
-  io: Server,
-  roomCode: string,
-  room: RoomState,
-  currentSpeakerId: string,
-): void {
-  const nextSpeakerId = getOtherParticipantId(room, currentSpeakerId);
-
-  if (!nextSpeakerId || room.participantIds.size < 2) {
-    room.turnParticipantId = null;
-    room.phase = "waiting";
-  } else {
-    room.turnParticipantId = nextSpeakerId;
-    room.phase = "speaking";
-  }
-
+function openTurnFloor(io: Server, roomCode: string, room: RoomState): void {
+  room.turnParticipantId = null;
+  room.phase = "waiting";
   emitTurnState(io, roomCode, room);
 }
 
@@ -171,8 +127,6 @@ export function registerSocketHandlers(io: Server): void {
       socket.data.speakLang = myLang;
       socket.data.hearLang = myLang;
 
-      ensureActiveTurn(io, code, room);
-
       const participants = room.participantIds.size;
       const partnerSocket = socketsInRoom.find((s) => s.id !== socket.id);
       const partnerLang = partnerSocket?.data.speakLang as string | undefined;
@@ -197,6 +151,53 @@ export function registerSocketHandlers(io: Server): void {
       console.log(
         `socket ${socket.id} joined room ${code} (${participants} participants, lang=${myLang}, turn=${room.turnParticipantId})`,
       );
+    });
+
+    socket.on("claim_turn", (payload, callback) => {
+      const code = socket.data.roomCode as string | undefined;
+
+      if (!code) {
+        callback?.({ ok: false, message: "Join a room first" });
+        return;
+      }
+
+      const room = rooms.get(code);
+      if (!room) {
+        callback?.({ ok: false, message: "Room not found" });
+        return;
+      }
+
+      if (room.participantIds.size < 2) {
+        callback?.({ ok: false, message: "Waiting for partner" });
+        return;
+      }
+
+      if (room.phase === "processing") {
+        callback?.({ ok: false, message: "Translation in progress" });
+        return;
+      }
+
+      if (
+        room.phase === "speaking" &&
+        room.turnParticipantId &&
+        room.turnParticipantId !== socket.id
+      ) {
+        callback?.({ ok: false, message: "Partner is speaking" });
+        return;
+      }
+
+      if (
+        room.phase === "speaking" &&
+        room.turnParticipantId === socket.id
+      ) {
+        callback?.({ ok: true });
+        return;
+      }
+
+      room.turnParticipantId = socket.id;
+      room.phase = "speaking";
+      emitTurnState(io, code, room);
+      callback?.({ ok: true });
     });
 
     socket.on("audio_chunk", async (payload: AudioChunkPayload) => {
@@ -258,7 +259,7 @@ export function registerSocketHandlers(io: Server): void {
 
         socket.to(code).emit("translation_result", translationResult);
         socket.emit("translation_sent", translationResult);
-        passTurnToPartner(io, code, room, socket.id);
+        openTurnFloor(io, code, room);
       } catch (error) {
         console.error(`audio_chunk error for ${socket.id}:`, error);
 
