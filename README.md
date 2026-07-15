@@ -44,6 +44,7 @@ Both should show **2 participants**.
 ```bash
 # Terminal 1 — phone (Expo Go)
 cd apps/mobile
+cp .env.example .env   # first time only; set your server URL in .env
 npx expo start
 
 # Terminal 2 — browser
@@ -105,11 +106,18 @@ curl http://localhost:3001/health
 
 ### Point the app at your server
 
-Edit `apps/mobile/src/config.ts`:
-
-```ts
-export const SERVER_URL = "https://your-app.up.railway.app";
+```bash
+cd apps/mobile
+cp .env.example .env
 ```
+
+Edit `.env` (never commit this file):
+
+```bash
+EXPO_PUBLIC_SERVER_URL=https://your-app.up.railway.app
+```
+
+Restart Expo after changing (`npx expo start --clear`).
 
 ## WebSocket events
 
@@ -136,7 +144,9 @@ export const SERVER_URL = "https://your-app.up.railway.app";
 
 ### Going public on GitHub
 
-The mobile app points at your Railway URL. If the repo is public, anyone could use that endpoint and spend your OpenAI credits.
+Treat your **server URL** like an API key: keep it in `apps/mobile/.env` (gitignored), not in source code. The repo ships `.env.example` with a placeholder.
+
+The mobile app connects to your Railway deployment. If someone learns that URL, they could use your server and spend OpenAI credits. Rate limits (below) reduce that risk.
 
 **Built-in rate limits** (per IP / per connection):
 
