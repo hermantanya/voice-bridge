@@ -144,8 +144,7 @@ export function SessionScreen({
         </View>
 
         <Text style={styles.langNote}>
-          The other person hears your speech in their "I hear" language. You hear
-          them in your "I hear" language.
+          "I hear" is the language you'll receive when the other person talks.
         </Text>
 
         {participantId ? (
