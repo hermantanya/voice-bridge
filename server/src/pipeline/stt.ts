@@ -8,6 +8,7 @@ const MIME_BY_FORMAT: Record<string, string> = {
   mp3: "audio/mpeg",
   m4a: "audio/mp4",
   mp4: "audio/mp4",
+  caf: "audio/x-caf",
 };
 
 export async function transcribe(

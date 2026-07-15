@@ -21,6 +21,9 @@ export function HomeScreen({
   onJoinRoom,
   onOpenSettings,
 }: HomeScreenProps) {
+  const trimmedCode = roomCode.trim();
+  const canJoin = trimmedCode.length >= 4;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Voice Bridge</Text>
@@ -30,25 +33,33 @@ export function HomeScreen({
 
       <View style={styles.card}>
         <Text style={styles.label}>Room code</Text>
+        <Text style={styles.hint}>
+          To join an existing room, type the code from the other phone below.
+        </Text>
         <TextInput
           style={styles.input}
           value={roomCode}
           onChangeText={onRoomCodeChange}
-          placeholder="ABC123"
+          placeholder="e.g. T8S4YN"
+          placeholderTextColor="#475569"
           autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
           maxLength={6}
         />
 
-        <Pressable style={styles.primaryButton} onPress={onCreateRoom}>
-          <Text style={styles.primaryButtonText}>Create new room</Text>
-        </Pressable>
-
         <Pressable
-          style={[styles.secondaryButton, !roomCode && styles.buttonDisabled]}
+          style={[styles.secondaryButton, !canJoin && styles.buttonDisabled]}
           onPress={onJoinRoom}
-          disabled={!roomCode}
+          disabled={!canJoin}
         >
           <Text style={styles.secondaryButtonText}>Join room</Text>
+        </Pressable>
+
+        <Text style={styles.orDivider}>or</Text>
+
+        <Pressable style={styles.primaryButton} onPress={onCreateRoom}>
+          <Text style={styles.primaryButtonText}>Create new room</Text>
         </Pressable>
       </View>
 
@@ -87,6 +98,16 @@ const styles = StyleSheet.create({
     color: "#cbd5e1",
     fontSize: 14,
     fontWeight: "600",
+  },
+  hint: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  orDivider: {
+    color: "#64748b",
+    fontSize: 13,
+    textAlign: "center",
   },
   input: {
     backgroundColor: "#0f172a",

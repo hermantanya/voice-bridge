@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SafeAreaView, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import type { LanguageCode } from "./src/config";
+import { useAudio } from "./src/hooks/useAudio";
 import { useSocket } from "./src/hooks/useSocket";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
@@ -22,13 +23,32 @@ export default function App() {
   const [hearLang, setHearLang] = useState<LanguageCode>("he");
 
   const inSession = screen === "session" && !!activeRoomCode;
+  const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
+    async () => {},
+  );
+
+  const handleIncomingTranslation = useCallback(
+    (result: { audioBase64: string }) => {
+      void playAudioRef.current(result.audioBase64);
+    },
+    [],
+  );
 
   const socket = useSocket({
     roomCode: activeRoomCode,
     speakLang,
     hearLang,
     enabled: inSession,
+    onIncomingTranslation: handleIncomingTranslation,
   });
+
+  const audio = useAudio({
+    onAudioReady: socket.sendAudioChunk,
+  });
+
+  useEffect(() => {
+    playAudioRef.current = audio.playAudioBase64;
+  }, [audio.playAudioBase64]);
 
   const content = useMemo(() => {
     if (screen === "settings") {
@@ -53,6 +73,12 @@ export default function App() {
           participants={socket.participants}
           participantId={socket.participantId}
           errorMessage={socket.errorMessage}
+          isRecording={audio.isRecording}
+          isTranslating={socket.isTranslating}
+          lastSent={socket.lastSent}
+          lastReceived={socket.lastReceived}
+          onStartRecording={audio.startRecording}
+          onStopRecording={audio.stopRecording}
           onLeave={() => {
             socket.disconnect();
             setActiveRoomCode("");
@@ -81,11 +107,17 @@ export default function App() {
     );
   }, [
     activeRoomCode,
+    audio.isRecording,
+    audio.startRecording,
+    audio.stopRecording,
     hearLang,
     roomCode,
     screen,
     socket.disconnect,
     socket.errorMessage,
+    socket.isTranslating,
+    socket.lastReceived,
+    socket.lastSent,
     socket.participantId,
     socket.participants,
     socket.status,
