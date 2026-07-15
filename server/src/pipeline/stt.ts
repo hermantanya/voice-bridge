@@ -13,9 +13,8 @@ const MIME_BY_FORMAT: Record<string, string> = {
 
 export async function transcribe(
   audio: Buffer,
-  sourceLang: string,
   format = "webm",
-): Promise<string> {
+): Promise<{ text: string; language: string }> {
   const openai = getOpenAIClient();
   const mimeType = MIME_BY_FORMAT[format] ?? "audio/webm";
   const file = new File([audio], `audio.${format}`, { type: mimeType });
@@ -23,8 +22,11 @@ export async function transcribe(
   const response = await openai.audio.transcriptions.create({
     file,
     model: "whisper-1",
-    language: sourceLang,
+    response_format: "verbose_json",
   });
 
-  return response.text.trim();
+  const text = response.text.trim();
+  const language = response.language ?? "en";
+
+  return { text, language };
 }

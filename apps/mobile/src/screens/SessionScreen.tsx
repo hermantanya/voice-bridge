@@ -143,6 +143,11 @@ export function SessionScreen({
           <Text style={styles.value}>{languageLabel(hearLang)}</Text>
         </View>
 
+        <Text style={styles.langNote}>
+          The other person hears your speech in their "I hear" language. You hear
+          them in your "I hear" language.
+        </Text>
+
         {participantId ? (
           <Text style={styles.meta}>Your ID: {participantId.slice(0, 8)}...</Text>
         ) : null}
@@ -275,6 +280,11 @@ const styles = StyleSheet.create({
   meta: {
     color: "#64748b",
     fontSize: 12,
+  },
+  langNote: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 18,
   },
   hint: {
     color: "#94a3b8",
