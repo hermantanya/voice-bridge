@@ -1,6 +1,14 @@
 import type { Server, Socket } from "socket.io";
 
 import { runTranslationPipeline } from "../pipeline/index.js";
+import {
+  closeActivePipeline,
+  createActiveConversationTracker,
+  getActiveConversationMs,
+  resolvePipelineStartMs,
+  startActivePipeline,
+  type ActiveConversationTracker,
+} from "./activeConversation.js";
 import { rejectIfAudioLimited, type SocketRateLimits } from "./rateLimit.js";
 
 type JoinRoomPayload = {
@@ -14,6 +22,8 @@ type AudioChunkPayload = {
   format?: string;
   sourceLang?: string;
   targetLang?: string;
+  recordingDurationMs?: number;
+  recordingStartedAt?: number;
 };
 
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -29,6 +39,9 @@ type RoomState = {
   turnParticipantId: string | null;
   phase: TurnPhase;
   version: number;
+  activeConversation: ActiveConversationTracker;
+  participantBillableMs: Map<string, number>;
+  sessionStartedAt: number | null;
 };
 
 const rooms = new Map<string, RoomState>();
@@ -39,7 +52,46 @@ function createRoomState(): RoomState {
     turnParticipantId: null,
     phase: "waiting",
     version: 0,
+    activeConversation: createActiveConversationTracker(),
+    participantBillableMs: new Map(),
+    sessionStartedAt: null,
   };
+}
+
+function ensureSessionStarted(room: RoomState): void {
+  if (room.participantIds.size >= 2 && room.sessionStartedAt === null) {
+    room.sessionStartedAt = Date.now();
+  }
+}
+
+function clearSessionIfAlone(room: RoomState): void {
+  if (room.participantIds.size < 2) {
+    room.sessionStartedAt = null;
+    room.activeConversation = createActiveConversationTracker();
+    room.participantBillableMs.clear();
+  }
+}
+
+function buildUsagePayload(room: RoomState) {
+  const totalActiveConversationMs = getActiveConversationMs(
+    room.activeConversation,
+  );
+
+  return {
+    totalActiveConversationMs,
+    billableMsByParticipant: Object.fromEntries(room.participantBillableMs),
+    sessionStartedAt: room.sessionStartedAt,
+    activeConversationMs: totalActiveConversationMs,
+  };
+}
+
+function recordParticipantTurnUsage(
+  room: RoomState,
+  participantId: string,
+  turnActiveMs: number,
+): void {
+  const currentBillable = room.participantBillableMs.get(participantId) ?? 0;
+  room.participantBillableMs.set(participantId, currentBillable + turnActiveMs);
 }
 
 function getRoomTurnState(room: RoomState): TurnState {
@@ -91,6 +143,13 @@ function openTurnFloor(io: Server, roomCode: string, room: RoomState): void {
   emitTurnState(io, roomCode, room);
 }
 
+function emitUsageUpdate(io: Server, roomCode: string, room: RoomState): void {
+  io.to(roomCode).emit("usage_update", {
+    roomCode,
+    ...buildUsagePayload(room),
+  });
+}
+
 export function registerSocketHandlers(
   io: Server,
   rateLimits: SocketRateLimits,
@@ -126,6 +185,7 @@ export function registerSocketHandlers(
       socket.data.hearLang = myLang;
 
       const participants = room.participantIds.size;
+      ensureSessionStarted(room);
 
       // Never pre-assign: when both are present, floor stays open until
       // someone presses hold-to-talk (claim_turn).
@@ -145,6 +205,7 @@ export function registerSocketHandlers(
         myLang,
         partnerLang,
         turnState,
+        ...buildUsagePayload(room),
       });
 
       socket.to(code).emit("participant_joined", {
@@ -152,6 +213,7 @@ export function registerSocketHandlers(
         participants,
         myLang,
         turnState,
+        ...buildUsagePayload(room),
       });
 
       if (participants >= 2 && room.phase === "waiting") {
@@ -241,7 +303,19 @@ export function registerSocketHandlers(
       }
 
       room.phase = "processing";
+
+      const speechMs = Math.max(
+        0,
+        Math.round(payload.recordingDurationMs ?? 0),
+      );
+      const pipelineStartMs = resolvePipelineStartMs(
+        payload.recordingStartedAt,
+        speechMs,
+      );
+
+      startActivePipeline(room.activeConversation, socket.id, pipelineStartMs);
       emitTurnState(io, code, room);
+      emitUsageUpdate(io, code, room);
 
       try {
         const audio = Buffer.from(payload.audioBase64, "base64");
@@ -261,7 +335,12 @@ export function registerSocketHandlers(
           format: payload.format ?? "webm",
         });
 
-        const translationResult = {
+        const turnActiveMs = speechMs + result.latencyMs;
+        closeActivePipeline(room.activeConversation, socket.id);
+        recordParticipantTurnUsage(room, socket.id, turnActiveMs);
+        const usage = buildUsagePayload(room);
+
+        const translationBase = {
           roomCode: code,
           fromParticipantId: socket.id,
           sourceLang: result.sourceLang,
@@ -271,13 +350,23 @@ export function registerSocketHandlers(
           audioBase64: result.audio.toString("base64"),
           audioFormat: result.audioFormat,
           latencyMs: result.latencyMs,
+          turnActiveMs,
+          ...usage,
         };
 
-        socket.to(code).emit("translation_result", translationResult);
-        socket.emit("translation_sent", translationResult);
+        emitUsageUpdate(io, code, room);
+
+        socket.to(code).emit("translation_result", translationBase);
+        socket.emit("translation_sent", {
+          ...translationBase,
+          myBillableMs: room.participantBillableMs.get(socket.id) ?? 0,
+        });
         openTurnFloor(io, code, room);
       } catch (error) {
         console.error(`audio_chunk error for ${socket.id}:`, error);
+
+        closeActivePipeline(room.activeConversation, socket.id);
+        emitUsageUpdate(io, code, room);
 
         room.turnParticipantId = socket.id;
         room.phase = "speaking";
@@ -294,6 +383,7 @@ export function registerSocketHandlers(
 
       if (code && rooms.has(code)) {
         const room = rooms.get(code)!;
+        closeActivePipeline(room.activeConversation, socket.id);
         room.participantIds.delete(socket.id);
 
         if (room.participantIds.size === 0) {
@@ -307,12 +397,14 @@ export function registerSocketHandlers(
           if (room.participantIds.size === 1) {
             room.turnParticipantId = null;
             room.phase = "waiting";
+            clearSessionIfAlone(room);
           }
 
           socket.to(code).emit("participant_left", {
             participantId: socket.id,
             participants: room.participantIds.size,
             turnState: getRoomTurnState(room),
+            ...buildUsagePayload(room),
           });
 
           emitTurnState(io, code, room);

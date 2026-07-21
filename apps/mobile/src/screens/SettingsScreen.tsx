@@ -1,18 +1,36 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { LANGUAGES, languageLabel, type LanguageCode } from "../config";
+import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
 
 type SettingsScreenProps = {
   myLang: LanguageCode;
   onMyLangChange: (lang: LanguageCode) => void;
   onBack: () => void;
+  showMicrophoneSettings?: boolean;
+  microphoneDevices?: MicrophoneDevice[];
+  selectedMicrophoneId?: string | null;
+  onMicrophoneChange?: (deviceId: string) => void;
+  onRefreshMicrophones?: (requestLabels?: boolean) => void;
 };
 
 export function SettingsScreen({
   myLang,
   onMyLangChange,
   onBack,
+  showMicrophoneSettings = false,
+  microphoneDevices = [],
+  selectedMicrophoneId = null,
+  onMicrophoneChange,
+  onRefreshMicrophones,
 }: SettingsScreenProps) {
+  useEffect(() => {
+    if (showMicrophoneSettings) {
+      onRefreshMicrophones?.(true);
+    }
+  }, [onRefreshMicrophones, showMicrophoneSettings]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>My language</Text>
@@ -37,6 +55,45 @@ export function SettingsScreen({
           );
         })}
       </View>
+
+      {showMicrophoneSettings ? (
+        <>
+          <Text style={[styles.title, styles.sectionTitle]}>Microphone</Text>
+          <Text style={styles.subtitle}>
+            On Mac, pick your Mac microphone here. Avoid iPhone or Continuity
+            inputs unless you mean to use your phone as the mic.
+          </Text>
+
+          <View style={styles.card}>
+            {microphoneDevices.length === 0 ? (
+              <Text style={styles.exampleText}>
+                Allow microphone access in your browser to see available inputs.
+              </Text>
+            ) : (
+              microphoneDevices.map((device) => {
+                const active = device.deviceId === selectedMicrophoneId;
+                return (
+                  <Pressable
+                    key={device.deviceId}
+                    style={[styles.option, active && styles.optionActive]}
+                    onPress={() => onMicrophoneChange?.(device.deviceId)}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        active && styles.optionTextActive,
+                      ]}
+                    >
+                      {device.label}
+                      {isRemotePhoneMic(device.label) ? " (phone)" : ""}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        </>
+      ) : null}
 
       <View style={styles.exampleCard}>
         <Text style={styles.exampleTitle}>Tip</Text>
@@ -73,6 +130,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 24,
+  },
+  sectionTitle: {
+    marginTop: 32,
+    marginBottom: 8,
   },
   card: {
     backgroundColor: "#1e293b",

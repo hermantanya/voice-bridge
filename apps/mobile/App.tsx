@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SafeAreaView, StyleSheet } from "react-native";
+import { Platform, SafeAreaView, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import type { LanguageCode } from "./src/config";
@@ -20,11 +20,13 @@ export default function App() {
   const [roomCode, setRoomCode] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [myLang, setMyLang] = useState<LanguageCode>("en");
+  const [homeResetKey, setHomeResetKey] = useState(0);
 
   const inSession = screen === "session" && !!activeRoomCode;
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
   );
+  const holdStartedAtRef = useRef<number | null>(null);
 
   const handleIncomingTranslation = useCallback(
     (result: { audioBase64: string }) => {
@@ -40,8 +42,25 @@ export default function App() {
     onIncomingTranslation: handleIncomingTranslation,
   });
 
+  const handleAudioReady = useCallback(
+    (audioBase64: string, format: string, recordingDurationMs: number) => {
+      const holdStartedAt = holdStartedAtRef.current;
+      holdStartedAtRef.current = null;
+      const durationMs = holdStartedAt
+        ? Math.max(recordingDurationMs, Date.now() - holdStartedAt)
+        : recordingDurationMs;
+      socket.sendAudioChunk(
+        audioBase64,
+        format,
+        durationMs,
+        holdStartedAt ?? undefined,
+      );
+    },
+    [socket.sendAudioChunk],
+  );
+
   const audio = useAudio({
-    onAudioReady: socket.sendAudioChunk,
+    onAudioReady: handleAudioReady,
     enabled: inSession,
   });
 
@@ -50,8 +69,10 @@ export default function App() {
   }, [audio.playAudioBase64]);
 
   const handleStartRecording = useCallback(async () => {
+    holdStartedAtRef.current = Date.now();
     const claimed = await socket.claimTurn();
     if (!claimed) {
+      holdStartedAtRef.current = null;
       throw new Error("Someone else started speaking first");
     }
     await audio.startRecording();
@@ -71,6 +92,15 @@ export default function App() {
     socket.isOpenTurn,
   ]);
 
+  const handleLeaveSession = useCallback(() => {
+    audio.releaseMicrophone();
+    socket.disconnect();
+    setActiveRoomCode("");
+    setRoomCode("");
+    setHomeResetKey((key) => key + 1);
+    setScreen("home");
+  }, [audio.releaseMicrophone, socket.disconnect]);
+
   const content = useMemo(() => {
     if (screen === "settings") {
       return (
@@ -78,6 +108,11 @@ export default function App() {
           myLang={myLang}
           onMyLangChange={setMyLang}
           onBack={() => setScreen("home")}
+          showMicrophoneSettings={Platform.OS === "web"}
+          microphoneDevices={audio.inputDevices}
+          selectedMicrophoneId={audio.selectedDeviceId}
+          onMicrophoneChange={audio.setSelectedDeviceId}
+          onRefreshMicrophones={audio.refreshInputDevices}
         />
       );
     }
@@ -96,33 +131,33 @@ export default function App() {
           isMyTurn={socket.isMyTurn}
           isOpenTurn={socket.isOpenTurn}
           isProcessing={socket.isProcessing}
-          lastSent={socket.lastSent}
-          lastReceived={socket.lastReceived}
+          transcript={socket.transcript}
+          totalActiveConversationMs={socket.totalActiveConversationMs}
+          myBillableMs={socket.myBillableMs}
+          sessionStartedAt={socket.sessionStartedAt}
           onStartRecording={handleStartRecording}
           onStopRecording={audio.stopRecording}
-          onLeave={() => {
-            audio.releaseMicrophone();
-            socket.disconnect();
-            setActiveRoomCode("");
-            setScreen("home");
-          }}
+          onLeave={handleLeaveSession}
         />
       );
     }
 
     return (
       <HomeScreen
+        key={`home-${homeResetKey}`}
         roomCode={roomCode}
         myLang={myLang}
         onRoomCodeChange={(value) => setRoomCode(value.toUpperCase())}
         onCreateRoom={() => {
           const code = generateRoomCode();
-          setRoomCode(code);
+          setRoomCode("");
           setActiveRoomCode(code);
           setScreen("session");
         }}
         onJoinRoom={() => {
-          setActiveRoomCode(roomCode.trim().toUpperCase());
+          const code = roomCode.trim().toUpperCase();
+          setActiveRoomCode(code);
+          setRoomCode("");
           setScreen("session");
         }}
         onOpenSettings={() => setScreen("settings")}
@@ -130,25 +165,31 @@ export default function App() {
     );
   }, [
     activeRoomCode,
+    audio.inputDevices,
     audio.isRecording,
+    audio.refreshInputDevices,
     audio.releaseMicrophone,
-    audio.startRecording,
+    audio.selectedDeviceId,
+    audio.setSelectedDeviceId,
     audio.stopRecording,
+    handleLeaveSession,
     handleStartRecording,
+    homeResetKey,
     myLang,
     roomCode,
     screen,
-    socket.disconnect,
+    socket.myBillableMs,
+    socket.sessionStartedAt,
+    socket.totalActiveConversationMs,
     socket.errorMessage,
     socket.isMyTurn,
     socket.isOpenTurn,
     socket.isProcessing,
-    socket.lastReceived,
-    socket.lastSent,
-    socket.partnerLang,
     socket.participantId,
     socket.participants,
+    socket.partnerLang,
     socket.status,
+    socket.transcript,
   ]);
 
   return (

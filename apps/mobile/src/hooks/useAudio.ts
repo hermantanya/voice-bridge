@@ -3,8 +3,22 @@ import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import {
+  clearSavedMicDeviceId,
+  enumerateMicrophones,
+  getAudioConstraints,
+  loadSavedMicDeviceId,
+  preferBuiltInMic,
+  saveMicDeviceId,
+  type MicrophoneDevice,
+} from "../web/microphoneDevices";
+
 type UseAudioOptions = {
-  onAudioReady: (audioBase64: string, format: string) => void;
+  onAudioReady: (
+    audioBase64: string,
+    format: string,
+    recordingDurationMs: number,
+  ) => void;
   enabled?: boolean;
 };
 
@@ -58,11 +72,16 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   const webSessionRef = useRef(0);
   const webStartInProgressRef = useRef(false);
   const webStopRequestedRef = useRef(false);
+  const recordingStartedAtRef = useRef<number | null>(null);
   const onAudioReadyRef = useRef(onAudioReady);
 
   const [isRecording, setIsRecording] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(
     null,
+  );
+  const [inputDevices, setInputDevices] = useState<MicrophoneDevice[]>([]);
+  const [selectedDeviceId, setSelectedDeviceIdState] = useState<string | null>(
+    () => (Platform.OS === "web" ? loadSavedMicDeviceId() : null),
   );
 
   onAudioReadyRef.current = onAudioReady;
@@ -74,6 +93,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   }, []);
 
   const resetWebRecordingState = useCallback(() => {
+    webSessionRef.current += 1;
+
     const recorder = mediaRecorderRef.current;
     const stream = mediaStreamRef.current ?? pendingStreamRef.current;
 
@@ -83,6 +104,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     webChunksRef.current = [];
     webStartInProgressRef.current = false;
     webStopRequestedRef.current = false;
+    recordingStartedAtRef.current = null;
     setIsRecording(false);
 
     if (recorder && recorder.state !== "inactive") {
@@ -95,6 +117,85 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     stopMediaStream(stream);
   }, [stopMediaStream]);
+
+  const resolveMicDeviceId = useCallback((): string | null => {
+    if (selectedDeviceId) {
+      return selectedDeviceId;
+    }
+
+    return preferBuiltInMic(inputDevices)?.deviceId ?? null;
+  }, [inputDevices, selectedDeviceId]);
+
+  const refreshInputDevices = useCallback(async (requestLabels = false) => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    let devices = await enumerateMicrophones();
+    const labelsHidden = devices.some(
+      (device) => !device.label || /^Microphone \d+$/.test(device.label),
+    );
+
+    if (requestLabels && devices.length > 0 && labelsHidden) {
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia(
+          getAudioConstraints(null),
+        );
+        probe.getTracks().forEach((track) => {
+          track.stop();
+        });
+        devices = await enumerateMicrophones();
+        setPermissionGranted(true);
+      } catch {
+        setPermissionGranted(false);
+      }
+    }
+
+    setInputDevices(devices);
+
+    const saved = loadSavedMicDeviceId();
+    if (saved && devices.some((device) => device.deviceId === saved)) {
+      setSelectedDeviceIdState(saved);
+      return;
+    }
+
+    if (saved) {
+      clearSavedMicDeviceId();
+    }
+
+    const preferred = preferBuiltInMic(devices);
+    if (preferred) {
+      setSelectedDeviceIdState(preferred.deviceId);
+      saveMicDeviceId(preferred.deviceId);
+    } else {
+      setSelectedDeviceIdState(null);
+    }
+  }, []);
+
+  const setSelectedDeviceId = useCallback(
+    (deviceId: string) => {
+      saveMicDeviceId(deviceId);
+      setSelectedDeviceIdState(deviceId);
+      resetWebRecordingState();
+    },
+    [resetWebRecordingState],
+  );
+
+  const attachStreamLifecycle = useCallback(
+    (stream: MediaStream) => {
+      stream.getAudioTracks().forEach((track) => {
+        track.addEventListener("ended", () => {
+          if (
+            mediaStreamRef.current === stream ||
+            pendingStreamRef.current === stream
+          ) {
+            resetWebRecordingState();
+          }
+        });
+      });
+    },
+    [resetWebRecordingState],
+  );
 
   const ensurePermissions = useCallback(async (): Promise<boolean> => {
     if (Platform.OS === "web") {
@@ -140,7 +241,21 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     return granted;
   }, [permissionGranted]);
 
+  const deliverRecording = useCallback(
+    (audioBase64: string, format: string) => {
+      const startedAt = recordingStartedAtRef.current;
+      recordingStartedAtRef.current = null;
+      const recordingDurationMs = startedAt
+        ? Math.max(0, Date.now() - startedAt)
+        : 0;
+      onAudioReadyRef.current(audioBase64, format, recordingDurationMs);
+    },
+    [],
+  );
+
   const startRecording = useCallback(async () => {
+    recordingStartedAtRef.current = Date.now();
+
     if (Platform.OS === "web") {
       if (webStartInProgressRef.current) {
         return;
@@ -167,13 +282,34 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
         const { mimeType, format } = getWebRecordingOptions();
         let stream: MediaStream;
+        const micDeviceId = resolveMicDeviceId();
+        const useExactDevice = Boolean(selectedDeviceId);
 
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream = await navigator.mediaDevices.getUserMedia(
+            getAudioConstraints(micDeviceId, useExactDevice),
+          );
+          attachStreamLifecycle(stream);
           setPermissionGranted(true);
-        } catch {
-          setPermissionGranted(false);
-          throw new Error("Microphone permission is required.");
+          await refreshInputDevices(true);
+        } catch (error) {
+          if (
+            micDeviceId &&
+            error instanceof DOMException &&
+            (error.name === "NotFoundError" || error.name === "OverconstrainedError")
+          ) {
+            clearSavedMicDeviceId();
+            setSelectedDeviceIdState(null);
+            stream = await navigator.mediaDevices.getUserMedia(
+              getAudioConstraints(null),
+            );
+            attachStreamLifecycle(stream);
+            setPermissionGranted(true);
+            await refreshInputDevices(true);
+          } else {
+            setPermissionGranted(false);
+            throw new Error("Microphone permission is required.");
+          }
         }
 
         pendingStreamRef.current = stream;
@@ -226,11 +362,12 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
             });
 
             if (blob.size === 0) {
+              recordingStartedAtRef.current = null;
               return;
             }
 
             const audioBase64 = await blobToBase64(blob);
-            onAudioReadyRef.current(audioBase64, format);
+            deliverRecording(audioBase64, format);
           })();
         };
 
@@ -268,7 +405,16 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     recordingRef.current = recording;
     setIsRecording(true);
-  }, [ensurePermissions, resetWebRecordingState, stopMediaStream]);
+  }, [
+    attachStreamLifecycle,
+    deliverRecording,
+    ensurePermissions,
+    refreshInputDevices,
+    resetWebRecordingState,
+    resolveMicDeviceId,
+    selectedDeviceId,
+    stopMediaStream,
+  ]);
 
   const stopRecording = useCallback(async () => {
     if (Platform.OS === "web") {
@@ -337,8 +483,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     });
 
     const format = uri.endsWith(".caf") ? "caf" : "m4a";
-    onAudioReadyRef.current(audioBase64, format);
-  }, [resetWebRecordingState, stopMediaStream]);
+    deliverRecording(audioBase64, format);
+  }, [deliverRecording, resetWebRecordingState, stopMediaStream]);
 
   useEffect(() => {
     if (Platform.OS !== "web") {
@@ -349,6 +495,28 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       resetWebRecordingState();
     }
   }, [enabled, resetWebRecordingState]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    void refreshInputDevices(false);
+
+    const handleDeviceChange = () => {
+      resetWebRecordingState();
+      void refreshInputDevices(false);
+    };
+
+    navigator.mediaDevices?.addEventListener("devicechange", handleDeviceChange);
+
+    return () => {
+      navigator.mediaDevices?.removeEventListener(
+        "devicechange",
+        handleDeviceChange,
+      );
+    };
+  }, [refreshInputDevices, resetWebRecordingState]);
 
   useEffect(() => {
     if (Platform.OS !== "web") {
@@ -408,6 +576,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   return {
     isRecording,
     permissionGranted,
+    inputDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    refreshInputDevices,
     startRecording,
     stopRecording,
     releaseMicrophone: resetWebRecordingState,
