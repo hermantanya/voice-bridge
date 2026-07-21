@@ -2,7 +2,7 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in theirs.
 
-**v1.1:** English, Hebrew, and Russian. Push-to-talk, first-come-first-serve turns, phone + browser.
+**v1.1:** English, Hebrew, and Russian. Push-to-talk, first-come-first-serve turns, phone + browser, live transcripts, and per-person speaking time.
 
 ## What it does
 
@@ -10,17 +10,21 @@ Real-time voice translation between two devices. Hold a button, speak in your la
 - Each person sets **My language** (English, Hebrew, or Russian)
 - **First come, first serve:** whoever holds **Hold to talk** first speaks
 - Speech is transcribed, translated, and played to the other person
-- Transcripts appear on screen with latency timing
+- Transcripts appear in a scrollable two-column history (You / Others)
+- Session stats track connection time and each person's speaking time (hold + translation)
+- On web, choose which microphone to use (e.g. Mac built-in vs. phone relay)
 
 ## How to use it
 
 ### 1. Set languages (before joining)
 
-On each device: **Language settings** → pick the language **you** speak.
+On each device: tap the language badge on the home screen (or **Language settings**) and pick the language **you** speak.
 
 Example: Hebrew speaker sets Hebrew, English speaker sets English, Russian speaker sets Russian.
 
 > Language is sent when you join a room. If you change it later, leave and rejoin.
+
+**Web only:** open **Language settings** to pick your microphone if the browser chose the wrong device (common on Mac when an iPhone is nearby).
 
 ### 2. Start a session
 
@@ -52,7 +56,19 @@ cd apps/mobile
 npx expo start --web
 ```
 
-Open `http://localhost:8081` in Chrome. Allow microphone when prompted.
+Open `http://localhost:8081` in Chrome. Allow microphone when prompted. If the wrong mic is selected, open **Language settings** from the home screen and choose your Mac's built-in microphone.
+
+### 4. Session screen
+
+Once two participants are connected, the session shows:
+
+| Stat | Meaning |
+|---|---|
+| **Session duration** | Wall-clock time since you both connected |
+| **Your speaking time** | Your hold-to-talk + translation time (updates when your turn finishes) |
+| **Partner speaking time** | Their hold + translation time (updates when their turn finishes) |
+
+While you hold the button or translation is running, the button animates and speaking times stay frozen until that turn completes.
 
 ## Architecture
 
@@ -129,10 +145,10 @@ Restart Expo after changing (`npx expo start --clear`).
 | `turn_state` | server → clients | Whose turn / processing state |
 | `translation_result` | server → listener | Translated audio + transcript |
 | `translation_sent` | server → speaker | Confirmation + transcript |
-| `usage_update` | server → clients | Session + room active + per-user active time |
+| `usage_update` | server → clients | Session timing sync (speaking times update on turn complete) |
 | `error` | server → client | Error message |
 
-**Usage metrics:** Session duration is wall-clock from when two participants join. **Active conversation time** (room) is the merged union of speech+processing intervals across all participants, so overlapping speech in v2+ does not double-count. **My active conversation time** is the sum of your own turns (speech hold + translation latency).
+**Usage metrics:** Session duration is wall-clock from when two participants join. The app shows **your speaking time** and **partner speaking time** (each person's hold + translation). The server also tracks a merged room total for billing (overlapping speech is not double-counted); that internal metric is not shown in the session UI.
 
 `audio_chunk` may include `recordingStartedAt` (epoch ms) so the server can anchor each interval at hold-to-talk start.
 
@@ -169,11 +185,12 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 ## Known limitations (v1.1)
 
 - Two participants per room only
-- English, Hebrew, and Russian only
+- English, Hebrew, and Russian only (any pair: EN ↔ HE ↔ RU)
 - One speaker at a time; floor is open until someone presses (not pre-assigned)
 - ~3–6 second latency per message
 - Web push-to-talk requires Chrome; mic active only while holding button
 - Language setting applies on room join; rejoin after changes
+- Speaking time counts update after each turn completes, not live during hold
 
 ## Roadmap
 
@@ -182,7 +199,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 | Version | Features |
 |---|---|
 | **v1.0** (done) | EN ↔ HE, 2 participants, push-to-talk, first-come-first-serve turns, phone + web |
-| **v1.1** (done) | + Russian (EN ↔ HE ↔ RU) |
+| **v1.1** (done) | + Russian (EN ↔ HE ↔ RU); scrollable transcript; session + speaking time stats; web mic picker; merged room usage on server (for future billing) |
 | v1.2 | Voice matching (speaker tone in 1:1) |
 | v1.3 | Auto-detect spoken language; user sets preferred hearing language only |
 | v1.4 | App Store / PWA, basic user profiles |
@@ -195,7 +212,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 | v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
 | v2.5 | Per-persona mute/unmute; per-speaker transcripts |
 | v3.0 | Dinner table mode: multi-lingual room, mute matrix, mixed pass-through |
-| v3.1 | Minute-based pricing + usage dashboard |
+| v3.1 | Minute-based pricing + usage dashboard (uses server-side merged speaking intervals) |
 
 ### Product arc
 

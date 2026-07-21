@@ -94,6 +94,19 @@ function readTotalActiveMs(payload: UsagePayload): number | undefined {
   return payload.activeConversationMs;
 }
 
+function readPartnerBillableMs(
+  map: Record<string, number> | undefined,
+  myParticipantId: string | null,
+): number | undefined {
+  if (!hasParticipantUsageMap(map) || !myParticipantId) {
+    return undefined;
+  }
+
+  return Object.entries(map)
+    .filter(([participantId]) => participantId !== myParticipantId)
+    .reduce((sum, [, ms]) => sum + ms, 0);
+}
+
 type UseSocketOptions = {
   roomCode: string;
   myLang: LanguageCode;
@@ -119,12 +132,26 @@ export function useSocket({
   const roomActiveSyncedAtRef = useRef(0);
 
   const applyUsagePayload = useCallback(
-    (payload: UsagePayload, trustPayloadMyActive = false) => {
+    (
+      payload: UsagePayload,
+      options: {
+        trustPayloadMyActive?: boolean;
+        updateBillable?: boolean;
+      } = {},
+    ) => {
+      const { trustPayloadMyActive = false, updateBillable = true } = options;
       const serverTotal = readTotalActiveMs(payload);
 
       if (serverTotal !== undefined) {
         roomActiveSyncedAtRef.current = Date.now();
         setTotalActiveConversationMs((current) => Math.max(current, serverTotal));
+      }
+
+      if (!updateBillable) {
+        if (payload.sessionStartedAt !== undefined) {
+          setSessionStartedAt(payload.sessionStartedAt);
+        }
+        return;
       }
 
       const me = participantIdRef.current;
@@ -135,6 +162,14 @@ export function useSocket({
         if (mine !== undefined) {
           setMyBillableMs((current) => Math.max(current, mine));
         }
+      }
+
+      const partnerTotal = readPartnerBillableMs(
+        payload.billableMsByParticipant,
+        me,
+      );
+      if (partnerTotal !== undefined) {
+        setPartnerBillableMs((current) => Math.max(current, partnerTotal));
       }
 
       if (payload.sessionStartedAt !== undefined) {
@@ -157,10 +192,21 @@ export function useSocket({
       }
 
       if (turnMs > 0 && role === "sent") {
-        setMyBillableMs((current) => current + turnMs);
+        if (
+          !hasParticipantUsageMap(payload.billableMsByParticipant) &&
+          payload.myBillableMs === undefined
+        ) {
+          setMyBillableMs((current) => current + turnMs);
+        }
       }
 
-      applyUsagePayload(payload, role === "sent");
+      if (turnMs > 0 && role === "received") {
+        if (!hasParticipantUsageMap(payload.billableMsByParticipant)) {
+          setPartnerBillableMs((current) => current + turnMs);
+        }
+      }
+
+      applyUsagePayload(payload, { trustPayloadMyActive: role === "sent" });
 
       if (turnMs > 0 && readTotalActiveMs(payload) === undefined) {
         setTotalActiveConversationMs((current) => current + turnMs);
@@ -193,6 +239,7 @@ export function useSocket({
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [totalActiveConversationMs, setTotalActiveConversationMs] = useState(0);
   const [myBillableMs, setMyBillableMs] = useState(0);
+  const [partnerBillableMs, setPartnerBillableMs] = useState(0);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [usageTick, setUsageTick] = useState(0);
 
@@ -271,6 +318,7 @@ export function useSocket({
     setTranscript([]);
     setTotalActiveConversationMs(0);
     setMyBillableMs(0);
+    setPartnerBillableMs(0);
     setSessionStartedAt(null);
     roomActiveSyncedAtRef.current = 0;
     pendingSpeechMsRef.current = 0;
@@ -466,7 +514,7 @@ export function useSocket({
     socket.on(
       "usage_update",
       (payload: { roomCode: string } & UsagePayload) => {
-        applyUsagePayload(payload);
+        applyUsagePayload(payload, { updateBillable: false });
       },
     );
 
@@ -506,6 +554,7 @@ export function useSocket({
     transcript,
     totalActiveConversationMs: displayTotalActiveConversationMs,
     myBillableMs,
+    partnerBillableMs,
     sessionStartedAt,
     disconnect,
     claimTurn,

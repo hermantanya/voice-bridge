@@ -58,6 +58,8 @@ Suggested tiers:
 - **Transcribe only** (pass-through languages): lower per-minute rate
 - Bundles (e.g. 100 minutes/month) for regular users
 
+The server already tracks per-person speaking time and a merged room total (union of active intervals, so overlapping speech in group mode is not double-counted). v3.1 exposes this in a billing dashboard.
+
 Exact pricing depends on real usage data from v3 beta.
 
 ## Multimodal intent (v5+)
@@ -79,7 +81,7 @@ This parallels multimodal AI research (speech + behavior + environment) but is a
 
 | Horizon | Product |
 |---|---|
-| v1 | Walkie-talkie interpreter (2 people) |
+| v1 | Walkie-talkie interpreter (2 people; EN, HE, RU in v1.1) |
 | v2 | Group channel with filters and mute |
 | v3 | Dinner-table interpretation layer |
 | v4+ | Shared-mic diarization, proximity experiments |

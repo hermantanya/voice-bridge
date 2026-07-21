@@ -131,9 +131,11 @@ export default function App() {
           isMyTurn={socket.isMyTurn}
           isOpenTurn={socket.isOpenTurn}
           isProcessing={socket.isProcessing}
+          turnParticipantId={socket.turnParticipantId}
+          turnPhase={socket.turnPhase}
           transcript={socket.transcript}
-          totalActiveConversationMs={socket.totalActiveConversationMs}
           myBillableMs={socket.myBillableMs}
+          partnerBillableMs={socket.partnerBillableMs}
           sessionStartedAt={socket.sessionStartedAt}
           onStartRecording={handleStartRecording}
           onStopRecording={audio.stopRecording}
@@ -179,12 +181,14 @@ export default function App() {
     roomCode,
     screen,
     socket.myBillableMs,
+    socket.partnerBillableMs,
     socket.sessionStartedAt,
-    socket.totalActiveConversationMs,
     socket.errorMessage,
     socket.isMyTurn,
     socket.isOpenTurn,
     socket.isProcessing,
+    socket.turnParticipantId,
+    socket.turnPhase,
     socket.participantId,
     socket.participants,
     socket.partnerLang,

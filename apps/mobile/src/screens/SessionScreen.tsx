@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Platform,
   Pressable,
   StyleSheet,
@@ -8,10 +9,13 @@ import {
   View,
 } from "react-native";
 
+import { SpeakingTimeStat } from "../components/SpeakingTimeStat";
 import { TranscriptPanel } from "../components/TranscriptPanel";
 import { languageLabel, type LanguageCode } from "../config";
 import type { TranscriptEntry } from "../hooks/useSocket";
-import { formatActiveConversationDuration, formatSessionDuration } from "../utils/timeFormat";
+import { formatSessionDuration } from "../utils/timeFormat";
+
+type TurnPhase = "waiting" | "speaking" | "processing";
 
 type SessionScreenProps = {
   roomCode: string;
@@ -25,9 +29,11 @@ type SessionScreenProps = {
   isMyTurn: boolean;
   isOpenTurn: boolean;
   isProcessing: boolean;
+  turnParticipantId: string | null;
+  turnPhase: TurnPhase;
   transcript: TranscriptEntry[];
-  totalActiveConversationMs: number;
   myBillableMs: number;
+  partnerBillableMs: number;
   sessionStartedAt: number | null;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -66,14 +72,17 @@ export function SessionScreen({
   partnerLang,
   status,
   participants,
+  participantId,
   errorMessage,
   isRecording,
   isMyTurn,
   isOpenTurn,
   isProcessing,
+  turnParticipantId,
+  turnPhase,
   transcript,
-  totalActiveConversationMs,
   myBillableMs,
+  partnerBillableMs,
   sessionStartedAt,
   onStartRecording,
   onStopRecording,
@@ -82,6 +91,20 @@ export function SessionScreen({
   const [recordError, setRecordError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const holdingRef = useRef(false);
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  const buttonGlow = useRef(new Animated.Value(0)).current;
+  const turnPulse = useRef(new Animated.Value(1)).current;
+
+  const myActivityPending =
+    isRecording ||
+    (turnParticipantId === participantId &&
+      (turnPhase === "speaking" || turnPhase === "processing"));
+
+  const partnerActivityPending =
+    turnParticipantId !== null &&
+    turnParticipantId !== participantId &&
+    (turnPhase === "speaking" || turnPhase === "processing");
+
   const canTalk =
     status === "connected" &&
     participants > 1 &&
@@ -131,6 +154,121 @@ export function SessionScreen({
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (isRecording) {
+      const scaleLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(buttonScale, {
+            toValue: 1.04,
+            duration: 550,
+            useNativeDriver: true,
+          }),
+          Animated.timing(buttonScale, {
+            toValue: 1,
+            duration: 550,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      const glowLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(buttonGlow, {
+            toValue: 1,
+            duration: 550,
+            useNativeDriver: true,
+          }),
+          Animated.timing(buttonGlow, {
+            toValue: 0.35,
+            duration: 550,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+      scaleLoop.start();
+      glowLoop.start();
+
+      return () => {
+        scaleLoop.stop();
+        glowLoop.stop();
+        buttonScale.setValue(1);
+        buttonGlow.setValue(0);
+      };
+    }
+
+    if (isProcessing) {
+      buttonGlow.setValue(0.35);
+      const processingLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(buttonScale, {
+            toValue: 1.02,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+          Animated.timing(buttonScale, {
+            toValue: 1,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      const processingGlow = Animated.loop(
+        Animated.sequence([
+          Animated.timing(buttonGlow, {
+            toValue: 1,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+          Animated.timing(buttonGlow, {
+            toValue: 0.35,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+      processingLoop.start();
+      processingGlow.start();
+
+      return () => {
+        processingLoop.stop();
+        processingGlow.stop();
+        buttonScale.setValue(1);
+        buttonGlow.setValue(0);
+      };
+    }
+
+    buttonScale.setValue(1);
+    buttonGlow.setValue(0);
+  }, [buttonGlow, buttonScale, isProcessing, isRecording]);
+
+  useEffect(() => {
+    if (!isRecording && !isProcessing) {
+      turnPulse.setValue(1);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(turnPulse, {
+          toValue: 0.35,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(turnPulse, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+    return () => {
+      loop.stop();
+    };
+  }, [isProcessing, isRecording, turnPulse]);
 
   const stopTalking = useCallback(async () => {
     const wasHolding = holdingRef.current;
@@ -200,25 +338,29 @@ export function SessionScreen({
         {showSessionStats ? (
           <View style={styles.statsCard}>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Session duration</Text>
+              <View style={styles.statLabelBlock}>
+                <Text style={styles.statLabel}>Session duration</Text>
+                <Text style={styles.statHint}>Connected with partner</Text>
+              </View>
               <Text style={styles.statValue}>
                 {sessionStartedAt
                   ? formatSessionDuration(sessionStartedAt, nowMs)
                   : "0:00"}
               </Text>
             </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Active conversation time</Text>
-              <Text style={styles.statValue}>
-                {formatActiveConversationDuration(totalActiveConversationMs)}
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>My active conversation time</Text>
-              <Text style={styles.statValueHighlight}>
-                {formatActiveConversationDuration(myBillableMs)}
-              </Text>
-            </View>
+            <SpeakingTimeStat
+              label="Your speaking time"
+              hint="Your hold + translation"
+              billableMs={myBillableMs}
+              pending={myActivityPending}
+              highlighted
+            />
+            <SpeakingTimeStat
+              label="Partner speaking time"
+              hint="Their hold + translation"
+              billableMs={partnerBillableMs}
+              pending={partnerActivityPending}
+            />
           </View>
         ) : null}
       </View>
@@ -242,7 +384,9 @@ export function SessionScreen({
       </View>
 
       <View style={[styles.turnCard, { borderColor: turnColor }]}>
-        <View style={[styles.turnDot, { backgroundColor: turnColor }]} />
+        <Animated.View
+          style={[styles.turnDot, { backgroundColor: turnColor, opacity: turnPulse }]}
+        />
         <Text style={[styles.turnText, { color: turnColor }]}>{turnLabel}</Text>
       </View>
 
@@ -264,32 +408,56 @@ export function SessionScreen({
       <TranscriptPanel entries={transcript} />
 
       <View style={styles.footer}>
-        <Pressable
+        <Animated.View
           style={[
-            styles.talkButton,
-            isRecording && styles.talkButtonActive,
-            !canTalk && !isRecording && styles.talkButtonDisabled,
+            styles.talkButtonWrap,
+            {
+              transform: [{ scale: buttonScale }],
+              opacity: isProcessing ? buttonGlow.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.82, 1],
+              }) : 1,
+            },
           ]}
-          onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
-          onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
-          onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
-          onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
-          onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
-          disabled={Platform.OS !== "web" && !canTalk && !isRecording}
-          accessibilityState={{ disabled: !canTalk && !isRecording }}
         >
-          {isProcessing ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.talkButtonText}>
-              {isRecording
-                ? "Listening..."
-                : isMyTurn || isOpenTurn
-                  ? "Hold to talk"
-                  : "Partner is speaking"}
-            </Text>
-          )}
-        </Pressable>
+          <Pressable
+            style={[
+              styles.talkButton,
+              isRecording && styles.talkButtonActive,
+              isProcessing && styles.talkButtonProcessing,
+              !canTalk && !isRecording && !isProcessing && styles.talkButtonDisabled,
+            ]}
+            onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
+            onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
+            onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
+            onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
+            onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
+            disabled={Platform.OS !== "web" && !canTalk && !isRecording}
+            accessibilityState={{ disabled: !canTalk && !isRecording }}
+          >
+            {isRecording ? (
+              <View style={styles.talkButtonContent}>
+                <Animated.View style={[styles.recordingDot, { opacity: buttonGlow }]} />
+                <Text style={styles.talkButtonText}>Listening...</Text>
+              </View>
+            ) : isProcessing ? (
+              <View style={styles.talkButtonContent}>
+                <ActivityIndicator color="#ffffff" />
+                <Text style={styles.talkButtonSubtext}>Translating...</Text>
+              </View>
+            ) : (
+              <Text style={styles.talkButtonText}>
+                {isMyTurn || isOpenTurn ? "Hold to talk" : "Partner is speaking"}
+              </Text>
+            )}
+          </Pressable>
+          {isRecording ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.talkButtonRing, { opacity: buttonGlow }]}
+            />
+          ) : null}
+        </Animated.View>
 
         {recordError ? <Text style={styles.error}>{recordError}</Text> : null}
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
@@ -339,13 +507,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 16,
   },
-  statLabel: {
+  statLabelBlock: {
     flex: 1,
     flexShrink: 1,
-    color: "#64748b",
+    gap: 2,
+  },
+  statLabel: {
+    color: "#94a3b8",
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
+  },
+  statHint: {
+    color: "#64748b",
+    fontSize: 11,
+    lineHeight: 14,
   },
   statValue: {
     color: "#f8fafc",
@@ -463,6 +639,9 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     gap: 8,
   },
+  talkButtonWrap: {
+    position: "relative",
+  },
   talkButton: {
     backgroundColor: "#3b82f6",
     borderRadius: 999,
@@ -474,13 +653,41 @@ const styles = StyleSheet.create({
   talkButtonActive: {
     backgroundColor: "#ef4444",
   },
+  talkButtonProcessing: {
+    backgroundColor: "#ca8a04",
+  },
   talkButtonDisabled: {
     opacity: 0.5,
+  },
+  talkButtonRing: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    bottom: -6,
+    left: -6,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: "#fca5a5",
+  },
+  talkButtonContent: {
+    alignItems: "center",
+    gap: 8,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#ffffff",
   },
   talkButtonText: {
     color: "#ffffff",
     fontSize: 18,
     fontWeight: "700",
+  },
+  talkButtonSubtext: {
+    color: "#fef3c7",
+    fontSize: 14,
+    fontWeight: "600",
   },
   error: {
     color: "#f87171",
