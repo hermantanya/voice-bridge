@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
 import { SERVER_URL, type LanguageCode } from "../config";
@@ -16,7 +16,43 @@ export type TranslationResult = {
   audioBase64: string;
   audioFormat: string;
   latencyMs: number;
+  turnActiveMs?: number;
+  totalActiveConversationMs?: number;
+  myBillableMs?: number;
+  billableMsByParticipant?: Record<string, number>;
+  sessionStartedAt?: number | null;
+  /** @deprecated use totalActiveConversationMs */
+  activeConversationMs?: number;
 };
+
+export type UsageSnapshot = {
+  totalActiveConversationMs: number;
+  myBillableMs: number;
+  sessionStartedAt: number | null;
+};
+
+export type TranscriptEntry = {
+  id: string;
+  direction: "sent" | "received";
+  sourceText: string;
+  translatedText: string;
+  receivedAt: number;
+  latencyMs: number;
+};
+
+function createTranscriptEntry(
+  direction: TranscriptEntry["direction"],
+  payload: TranslationResult,
+): TranscriptEntry {
+  return {
+    id: `${direction}-${payload.fromParticipantId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    direction,
+    sourceText: payload.sourceText,
+    translatedText: payload.translatedText,
+    receivedAt: Date.now(),
+    latencyMs: payload.latencyMs,
+  };
+}
 
 type TurnState = {
   turnParticipantId: string | null;
@@ -31,7 +67,32 @@ type JoinedRoomPayload = {
   myLang: LanguageCode;
   partnerLang?: LanguageCode;
   turnState?: TurnState;
+  totalActiveConversationMs?: number;
+  billableMsByParticipant?: Record<string, number>;
+  sessionStartedAt?: number | null;
+  activeConversationMs?: number;
 };
+
+type UsagePayload = {
+  totalActiveConversationMs?: number;
+  billableMsByParticipant?: Record<string, number>;
+  sessionStartedAt?: number | null;
+  myBillableMs?: number;
+  activeConversationMs?: number;
+};
+
+function hasParticipantUsageMap(
+  map: Record<string, number> | undefined,
+): map is Record<string, number> {
+  return Boolean(map && Object.keys(map).length > 0);
+}
+
+function readTotalActiveMs(payload: UsagePayload): number | undefined {
+  if (payload.totalActiveConversationMs !== undefined) {
+    return payload.totalActiveConversationMs;
+  }
+  return payload.activeConversationMs;
+}
 
 type UseSocketOptions = {
   roomCode: string;
@@ -54,6 +115,67 @@ export function useSocket({
     version: 0,
   });
   const participantIdRef = useRef<string | null>(null);
+  const pendingSpeechMsRef = useRef(0);
+  const roomActiveSyncedAtRef = useRef(0);
+
+  const applyUsagePayload = useCallback(
+    (payload: UsagePayload, trustPayloadMyActive = false) => {
+      const serverTotal = readTotalActiveMs(payload);
+
+      if (serverTotal !== undefined) {
+        roomActiveSyncedAtRef.current = Date.now();
+        setTotalActiveConversationMs((current) => Math.max(current, serverTotal));
+      }
+
+      const me = participantIdRef.current;
+      if (trustPayloadMyActive && payload.myBillableMs !== undefined) {
+        setMyBillableMs((current) => Math.max(current, payload.myBillableMs!));
+      } else if (hasParticipantUsageMap(payload.billableMsByParticipant) && me) {
+        const mine = payload.billableMsByParticipant[me];
+        if (mine !== undefined) {
+          setMyBillableMs((current) => Math.max(current, mine));
+        }
+      }
+
+      if (payload.sessionStartedAt !== undefined) {
+        setSessionStartedAt(payload.sessionStartedAt);
+      }
+    },
+    [],
+  );
+
+  const applyTurnUsage = useCallback(
+    (payload: TranslationResult, role: "sent" | "received") => {
+      let turnMs = payload.turnActiveMs ?? 0;
+
+      if (turnMs <= 0 && role === "sent") {
+        turnMs = pendingSpeechMsRef.current + Math.max(0, payload.latencyMs);
+      }
+
+      if (role === "sent") {
+        pendingSpeechMsRef.current = 0;
+      }
+
+      if (turnMs > 0 && role === "sent") {
+        setMyBillableMs((current) => current + turnMs);
+      }
+
+      applyUsagePayload(payload, role === "sent");
+
+      if (turnMs > 0 && readTotalActiveMs(payload) === undefined) {
+        setTotalActiveConversationMs((current) => current + turnMs);
+      }
+    },
+    [applyUsagePayload],
+  );
+
+  const ensureSessionStartedLocally = useCallback((participants: number) => {
+    if (participants >= 2) {
+      setSessionStartedAt((current) => current ?? Date.now());
+    } else {
+      setSessionStartedAt(null);
+    }
+  }, []);
 
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [participantId, setParticipantId] = useState<string | null>(null);
@@ -68,6 +190,11 @@ export function useSocket({
   const [lastReceived, setLastReceived] = useState<TranslationResult | null>(
     null,
   );
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [totalActiveConversationMs, setTotalActiveConversationMs] = useState(0);
+  const [myBillableMs, setMyBillableMs] = useState(0);
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [usageTick, setUsageTick] = useState(0);
 
   const isMyTurn =
     participantId !== null &&
@@ -75,6 +202,33 @@ export function useSocket({
     turnPhase === "speaking";
   const isOpenTurn = turnPhase === "waiting";
   const isProcessing = turnPhase === "processing";
+
+  useEffect(() => {
+    if (!isProcessing) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setUsageTick((tick) => tick + 1);
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isProcessing]);
+
+  const displayTotalActiveConversationMs = useMemo(() => {
+    if (!isProcessing) {
+      return totalActiveConversationMs;
+    }
+
+    const syncedAt = roomActiveSyncedAtRef.current;
+    if (syncedAt <= 0) {
+      return totalActiveConversationMs;
+    }
+
+    return totalActiveConversationMs + (Date.now() - syncedAt);
+  }, [isProcessing, totalActiveConversationMs, usageTick]);
 
   useEffect(() => {
     onIncomingRef.current = onIncomingTranslation;
@@ -92,6 +246,10 @@ export function useSocket({
     turnStateRef.current = turnState;
     setTurnParticipantId(turnState.turnParticipantId);
     setTurnPhase(turnState.phase);
+
+    if (turnState.phase === "processing" && roomActiveSyncedAtRef.current <= 0) {
+      roomActiveSyncedAtRef.current = Date.now();
+    }
   }, []);
 
   const resetTurnState = useCallback(() => {
@@ -110,6 +268,12 @@ export function useSocket({
     participantIdRef.current = null;
     setParticipants(0);
     setPartnerLang(null);
+    setTranscript([]);
+    setTotalActiveConversationMs(0);
+    setMyBillableMs(0);
+    setSessionStartedAt(null);
+    roomActiveSyncedAtRef.current = 0;
+    pendingSpeechMsRef.current = 0;
     resetTurnState();
   }, [resetTurnState]);
 
@@ -156,30 +320,35 @@ export function useSocket({
   }, [applyTurnState]);
 
   const sendAudioChunk = useCallback(
-    (audioBase64: string, format: string) => {
+    (
+      audioBase64: string,
+      format: string,
+      recordingDurationMs: number,
+      recordingStartedAt?: number,
+    ) => {
       const socket = socketRef.current;
       if (!socket?.connected) {
         setErrorMessage("Not connected to server");
         return;
       }
 
-      const turn = turnStateRef.current;
       const me = participantIdRef.current;
+      const turn = turnStateRef.current;
 
-      if (
-        turn.phase !== "speaking" ||
-        !me ||
-        turn.turnParticipantId !== me
-      ) {
+      if (!me || turn.turnParticipantId !== me) {
         setErrorMessage("Not your turn");
         return;
       }
+
+      pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
 
       setErrorMessage(null);
       socket.emit("audio_chunk", {
         audioBase64,
         format,
         sourceLang: myLang,
+        recordingDurationMs: pendingSpeechMsRef.current,
+        recordingStartedAt,
       });
     },
     [myLang],
@@ -224,6 +393,8 @@ export function useSocket({
       participantIdRef.current = payload.participantId;
       setParticipants(payload.participants);
       setPartnerLang(payload.partnerLang ?? null);
+      applyUsagePayload(payload);
+      ensureSessionStartedLocally(payload.participants);
       if (payload.turnState) {
         applyTurnState(payload.turnState);
       }
@@ -235,8 +406,10 @@ export function useSocket({
         participants: number;
         myLang?: LanguageCode;
         turnState?: TurnState;
-      }) => {
+      } & UsagePayload) => {
         setParticipants(payload.participants);
+        applyUsagePayload(payload);
+        ensureSessionStartedLocally(payload.participants);
         if (payload.myLang) {
           setPartnerLang(payload.myLang);
         }
@@ -248,7 +421,10 @@ export function useSocket({
 
     socket.on(
       "participant_left",
-      (payload: { participants: number; turnState?: TurnState }) => {
+      (payload: {
+        participants: number;
+        turnState?: TurnState;
+      } & UsagePayload) => {
         setParticipants(payload.participants);
         if (payload.participants < 2) {
           setPartnerLang(null);
@@ -256,6 +432,8 @@ export function useSocket({
         } else if (payload.turnState) {
           applyTurnState(payload.turnState);
         }
+        applyUsagePayload(payload);
+        ensureSessionStartedLocally(payload.participants);
       },
     );
 
@@ -268,12 +446,29 @@ export function useSocket({
 
     socket.on("translation_result", (payload: TranslationResult) => {
       setLastReceived(payload);
+      setTranscript((current) => [
+        ...current,
+        createTranscriptEntry("received", payload),
+      ]);
+      applyTurnUsage(payload, "received");
       onIncomingRef.current?.(payload);
     });
 
     socket.on("translation_sent", (payload: TranslationResult) => {
       setLastSent(payload);
+      setTranscript((current) => [
+        ...current,
+        createTranscriptEntry("sent", payload),
+      ]);
+      applyTurnUsage(payload, "sent");
     });
+
+    socket.on(
+      "usage_update",
+      (payload: { roomCode: string } & UsagePayload) => {
+        applyUsagePayload(payload);
+      },
+    );
 
     socket.on("error", (payload: { message?: string }) => {
       setErrorMessage(payload.message ?? "Unknown socket error");
@@ -285,7 +480,10 @@ export function useSocket({
     };
   }, [
     applyTurnState,
+    applyTurnUsage,
+    applyUsagePayload,
     disconnect,
+    ensureSessionStartedLocally,
     enabled,
     myLang,
     resetTurnState,
@@ -305,6 +503,10 @@ export function useSocket({
     isProcessing,
     lastSent,
     lastReceived,
+    transcript,
+    totalActiveConversationMs: displayTotalActiveConversationMs,
+    myBillableMs,
+    sessionStartedAt,
     disconnect,
     claimTurn,
     sendAudioChunk,

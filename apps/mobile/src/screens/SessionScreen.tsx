@@ -8,8 +8,10 @@ import {
   View,
 } from "react-native";
 
+import { TranscriptPanel } from "../components/TranscriptPanel";
 import { languageLabel, type LanguageCode } from "../config";
-import type { TranslationResult } from "../hooks/useSocket";
+import type { TranscriptEntry } from "../hooks/useSocket";
+import { formatActiveConversationDuration, formatSessionDuration } from "../utils/timeFormat";
 
 type SessionScreenProps = {
   roomCode: string;
@@ -23,8 +25,10 @@ type SessionScreenProps = {
   isMyTurn: boolean;
   isOpenTurn: boolean;
   isProcessing: boolean;
-  lastSent: TranslationResult | null;
-  lastReceived: TranslationResult | null;
+  transcript: TranscriptEntry[];
+  totalActiveConversationMs: number;
+  myBillableMs: number;
+  sessionStartedAt: number | null;
   onStartRecording: () => void;
   onStopRecording: () => void;
   onLeave: () => void;
@@ -62,19 +66,21 @@ export function SessionScreen({
   partnerLang,
   status,
   participants,
-  participantId,
   errorMessage,
   isRecording,
   isMyTurn,
   isOpenTurn,
   isProcessing,
-  lastSent,
-  lastReceived,
+  transcript,
+  totalActiveConversationMs,
+  myBillableMs,
+  sessionStartedAt,
   onStartRecording,
   onStopRecording,
   onLeave,
 }: SessionScreenProps) {
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const holdingRef = useRef(false);
   const canTalk =
     status === "connected" &&
@@ -115,6 +121,16 @@ export function SessionScreen({
   useEffect(() => {
     setRecordError(null);
   }, [errorMessage]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
 
   const stopTalking = useCallback(async () => {
     const wasHolding = holdingRef.current;
@@ -174,46 +190,55 @@ export function SessionScreen({
     };
   }, [stopTalking]);
 
+  const showSessionStats = participants >= 2;
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Session</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Session</Text>
+        <Text style={styles.roomCodeInline}>{roomCode}</Text>
+        {showSessionStats ? (
+          <View style={styles.statsCard}>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Session duration</Text>
+              <Text style={styles.statValue}>
+                {sessionStartedAt
+                  ? formatSessionDuration(sessionStartedAt, nowMs)
+                  : "0:00"}
+              </Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Active conversation time</Text>
+              <Text style={styles.statValue}>
+                {formatActiveConversationDuration(totalActiveConversationMs)}
+              </Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>My active conversation time</Text>
+              <Text style={styles.statValueHighlight}>
+                {formatActiveConversationDuration(myBillableMs)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </View>
 
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.label}>Status</Text>
+      <View style={styles.compactCard}>
+        <View style={styles.compactRow}>
           <View style={styles.statusRow}>
             <View
               style={[styles.statusDot, { backgroundColor: statusColor(status) }]}
             />
-            <Text style={styles.value}>{statusLabel(status)}</Text>
+            <Text style={styles.compactValue}>{statusLabel(status)}</Text>
           </View>
+          <Text style={styles.compactMeta}>
+            {participants} participant{participants === 1 ? "" : "s"}
+          </Text>
         </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Room</Text>
-          <Text style={styles.roomCode}>{roomCode}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Participants</Text>
-          <Text style={styles.value}>{participants}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>My language</Text>
-          <Text style={styles.value}>{languageLabel(myLang)}</Text>
-        </View>
-
-        {partnerLang ? (
-          <View style={styles.row}>
-            <Text style={styles.label}>Partner speaks</Text>
-            <Text style={styles.value}>{languageLabel(partnerLang)}</Text>
-          </View>
-        ) : null}
-
-        {participantId ? (
-          <Text style={styles.meta}>Your ID: {participantId.slice(0, 8)}...</Text>
-        ) : null}
+        <Text style={styles.compactMeta}>
+          You: {languageLabel(myLang)}
+          {partnerLang ? ` · Partner: ${languageLabel(partnerLang)}` : ""}
+        </Text>
       </View>
 
       <View style={[styles.turnCard, { borderColor: turnColor }]}>
@@ -222,94 +247,57 @@ export function SessionScreen({
       </View>
 
       {participants < 2 ? (
-        <Text style={styles.hint}>
-          Waiting for a second participant to join.
-        </Text>
+        <Text style={styles.hint}>Waiting for a second participant to join.</Text>
       ) : isMyTurn || isOpenTurn ? (
-        <Text style={styles.hint}>
-          Hold the button, speak in {languageLabel(myLang)}, then release.
-          {partnerLang
-            ? ` Your partner hears ${languageLabel(partnerLang)}.`
-            : ""}
-          {isOpenTurn ? " First to press the button gets to speak." : ""}
+        <Text style={styles.hint} numberOfLines={2}>
+          Hold to talk in {languageLabel(myLang)}.
           {Platform.OS === "web"
-            ? " Allow microphone access when your browser asks."
+            ? " Pick Mac mic in Language settings."
             : ""}
         </Text>
       ) : isProcessing ? (
-        <Text style={styles.hint}>
-          Hang on while the last message is translated.
-        </Text>
+        <Text style={styles.hint}>Translating...</Text>
       ) : (
-        <Text style={styles.hint}>
-          Your partner is speaking. You'll hear the translation automatically.
-        </Text>
+        <Text style={styles.hint}>Partner is speaking.</Text>
       )}
 
-      <Pressable
-        style={[
-          styles.talkButton,
-          isRecording && styles.talkButtonActive,
-          !canTalk && !isRecording && styles.talkButtonDisabled,
-        ]}
-        onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
-        onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
-        // RN Web forwards these to the DOM; more reliable than press in/out on mouse.
-        onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
-        onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
-        onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
-        disabled={Platform.OS !== "web" && !canTalk && !isRecording}
-        accessibilityState={{ disabled: !canTalk && !isRecording }}
-      >
-        {isProcessing ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={styles.talkButtonText}>
-            {isRecording
-              ? "Listening..."
-              : isMyTurn || isOpenTurn
-                ? "Hold to talk"
-                : "Partner is speaking"}
-          </Text>
-        )}
-      </Pressable>
+      <TranscriptPanel entries={transcript} />
 
-      {(lastSent || lastReceived) && (
-        <View style={styles.transcriptCard}>
-          <Text style={styles.transcriptTitle}>Transcript</Text>
+      <View style={styles.footer}>
+        <Pressable
+          style={[
+            styles.talkButton,
+            isRecording && styles.talkButtonActive,
+            !canTalk && !isRecording && styles.talkButtonDisabled,
+          ]}
+          onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
+          onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
+          onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
+          onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
+          onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
+          disabled={Platform.OS !== "web" && !canTalk && !isRecording}
+          accessibilityState={{ disabled: !canTalk && !isRecording }}
+        >
+          {isProcessing ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.talkButtonText}>
+              {isRecording
+                ? "Listening..."
+                : isMyTurn || isOpenTurn
+                  ? "Hold to talk"
+                  : "Partner is speaking"}
+            </Text>
+          )}
+        </Pressable>
 
-          {lastSent ? (
-            <View style={styles.transcriptBlock}>
-              <Text style={styles.transcriptLabel}>You said</Text>
-              <Text style={styles.transcriptText}>{lastSent.sourceText}</Text>
-              <Text style={styles.transcriptLabel}>Translated to</Text>
-              <Text style={styles.transcriptTranslated}>
-                {lastSent.translatedText}
-              </Text>
-              <Text style={styles.latency}>{lastSent.latencyMs}ms</Text>
-            </View>
-          ) : null}
+        {recordError ? <Text style={styles.error}>{recordError}</Text> : null}
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-          {lastReceived ? (
-            <View style={styles.transcriptBlock}>
-              <Text style={styles.transcriptLabel}>They said</Text>
-              <Text style={styles.transcriptText}>{lastReceived.sourceText}</Text>
-              <Text style={styles.transcriptLabel}>You hear</Text>
-              <Text style={styles.transcriptTranslated}>
-                {lastReceived.translatedText}
-              </Text>
-              <Text style={styles.latency}>{lastReceived.latencyMs}ms</Text>
-            </View>
-          ) : null}
-        </View>
-      )}
-
-      {recordError ? <Text style={styles.error}>{recordError}</Text> : null}
-      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-
-      <Pressable style={styles.leaveButton} onPress={onLeave}>
-        <Text style={styles.leaveButtonText}>Leave session</Text>
-      </Pressable>
+        <Pressable style={styles.leaveButton} onPress={onLeave}>
+          <Text style={styles.leaveButtonText}>Leave session</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -318,14 +306,92 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0f172a",
-    padding: 24,
+    paddingHorizontal: 24,
     paddingTop: 64,
+    paddingBottom: 16,
+  },
+  header: {
+    marginBottom: 16,
+    gap: 8,
   },
   title: {
     color: "#f8fafc",
     fontSize: 28,
     fontWeight: "700",
-    marginBottom: 20,
+  },
+  roomCodeInline: {
+    color: "#60a5fa",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 2,
+  },
+  statsCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+    marginTop: 4,
+  },
+  statRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+  },
+  statLabel: {
+    flex: 1,
+    flexShrink: 1,
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  statValue: {
+    color: "#f8fafc",
+    fontSize: 15,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+    flexShrink: 0,
+    minWidth: 52,
+    textAlign: "right",
+  },
+  statValueHighlight: {
+    color: "#60a5fa",
+    fontSize: 15,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+    flexShrink: 0,
+    minWidth: 52,
+    textAlign: "right",
+  },
+  mainScroll: {
+    flex: 1,
+  },
+  mainScrollContent: {
+    paddingBottom: 12,
+    flexGrow: 1,
+  },
+  compactCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+    marginBottom: 12,
+  },
+  compactRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  compactValue: {
+    color: "#f8fafc",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  compactMeta: {
+    color: "#94a3b8",
+    fontSize: 13,
   },
   card: {
     backgroundColor: "#1e293b",
@@ -369,12 +435,12 @@ const styles = StyleSheet.create({
   },
   hint: {
     color: "#94a3b8",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 20,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
   },
   turnCard: {
-    marginTop: 20,
+    marginBottom: 8,
     backgroundColor: "#1e293b",
     borderRadius: 12,
     borderWidth: 1,
@@ -393,14 +459,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  footer: {
+    paddingTop: 12,
+    gap: 8,
+  },
   talkButton: {
-    marginTop: 20,
     backgroundColor: "#3b82f6",
     borderRadius: 999,
-    paddingVertical: 28,
+    paddingVertical: 24,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 88,
+    minHeight: 76,
   },
   talkButtonActive: {
     backgroundColor: "#ef4444",
@@ -413,48 +482,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
-  transcriptCard: {
-    marginTop: 20,
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
-    padding: 20,
-    gap: 16,
-  },
-  transcriptTitle: {
-    color: "#f8fafc",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  transcriptBlock: {
-    gap: 6,
-  },
-  transcriptLabel: {
-    color: "#64748b",
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  transcriptText: {
-    color: "#e2e8f0",
-    fontSize: 16,
-  },
-  transcriptTranslated: {
-    color: "#60a5fa",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  latency: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 4,
-  },
   error: {
     color: "#f87171",
     fontSize: 14,
-    marginTop: 12,
   },
   leaveButton: {
-    marginTop: 24,
     backgroundColor: "#334155",
     borderRadius: 10,
     paddingVertical: 14,

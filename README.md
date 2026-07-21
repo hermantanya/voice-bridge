@@ -2,12 +2,12 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in theirs.
 
-**v1.0:** English ↔ Hebrew, push-to-talk, first-come-first-serve turns, phone + browser.
+**v1.1:** English, Hebrew, and Russian. Push-to-talk, first-come-first-serve turns, phone + browser.
 
 ## What it does
 
 - Two people join the same room with a short code
-- Each person sets **My language** (English or Hebrew)
+- Each person sets **My language** (English, Hebrew, or Russian)
 - **First come, first serve:** whoever holds **Hold to talk** first speaks
 - Speech is transcribed, translated, and played to the other person
 - Transcripts appear on screen with latency timing
@@ -18,7 +18,7 @@ Real-time voice translation between two devices. Hold a button, speak in your la
 
 On each device: **Language settings** → pick the language **you** speak.
 
-Example: Hebrew speaker sets Hebrew, English speaker sets English.
+Example: Hebrew speaker sets Hebrew, English speaker sets English, Russian speaker sets Russian.
 
 > Language is sent when you join a room. If you change it later, leave and rejoin.
 
@@ -129,6 +129,12 @@ Restart Expo after changing (`npx expo start --clear`).
 | `turn_state` | server → clients | Whose turn / processing state |
 | `translation_result` | server → listener | Translated audio + transcript |
 | `translation_sent` | server → speaker | Confirmation + transcript |
+| `usage_update` | server → clients | Session + room active + per-user active time |
+| `error` | server → client | Error message |
+
+**Usage metrics:** Session duration is wall-clock from when two participants join. **Active conversation time** (room) is the merged union of speech+processing intervals across all participants, so overlapping speech in v2+ does not double-count. **My active conversation time** is the sum of your own turns (speech hold + translation latency).
+
+`audio_chunk` may include `recordingStartedAt` (epoch ms) so the server can anchor each interval at hold-to-talk start.
 
 ## API
 
@@ -160,10 +166,10 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 **Optional later:** user auth, per-room tokens, or requiring everyone to self-host their own Railway backend.
 
-## Known limitations (v1.0)
+## Known limitations (v1.1)
 
 - Two participants per room only
-- English and Hebrew only
+- English, Hebrew, and Russian only
 - One speaker at a time; floor is open until someone presses (not pre-assigned)
 - ~3–6 second latency per message
 - Web push-to-talk requires Chrome; mic active only while holding button
@@ -176,7 +182,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 | Version | Features |
 |---|---|
 | **v1.0** (done) | EN ↔ HE, 2 participants, push-to-talk, first-come-first-serve turns, phone + web |
-| v1.1 | + Russian |
+| **v1.1** (done) | + Russian (EN ↔ HE ↔ RU) |
 | v1.2 | Voice matching (speaker tone in 1:1) |
 | v1.3 | Auto-detect spoken language; user sets preferred hearing language only |
 | v1.4 | App Store / PWA, basic user profiles |

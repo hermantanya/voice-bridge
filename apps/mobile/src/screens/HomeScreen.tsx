@@ -1,5 +1,10 @@
+import { useCallback } from "react";
 import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,64 +33,142 @@ export function HomeScreen({
   const trimmedCode = roomCode.trim();
   const canJoin = trimmedCode.length >= 4;
 
+  const dismissKeyboard = useCallback(() => {
+    Keyboard.dismiss();
+  }, []);
+
+  const handleCreateRoom = useCallback(() => {
+    dismissKeyboard();
+    onCreateRoom();
+  }, [dismissKeyboard, onCreateRoom]);
+
+  const handleJoinRoom = useCallback(() => {
+    dismissKeyboard();
+    onJoinRoom();
+  }, [dismissKeyboard, onJoinRoom]);
+
+  const handleOpenSettings = useCallback(() => {
+    dismissKeyboard();
+    onOpenSettings();
+  }, [dismissKeyboard, onOpenSettings]);
+
+  const handleClearCode = useCallback(() => {
+    onRoomCodeChange("");
+    dismissKeyboard();
+  }, [dismissKeyboard, onRoomCodeChange]);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Voice Bridge</Text>
-      <Text style={styles.subtitle}>
-        Real-time voice translation between two devices
-      </Text>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <View style={styles.container}>
+          <Pressable style={styles.headerArea} onPress={dismissKeyboard}>
+            <Text style={styles.title}>Voice Bridge</Text>
+            <Text style={styles.subtitle}>
+              Real-time voice translation between two devices
+            </Text>
+          </Pressable>
 
-      <View style={styles.langBadge}>
-        <Text style={styles.langBadgeText}>
-          My language: {languageLabel(myLang)}
-        </Text>
-      </View>
+          <Pressable style={styles.langBadge} onPress={handleOpenSettings}>
+            <Text style={styles.langBadgeText}>
+              My language: {languageLabel(myLang)}
+            </Text>
+            <Text style={styles.langBadgeAction}>Change</Text>
+          </Pressable>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Room code</Text>
-        <Text style={styles.hint}>
-          To join an existing room, type the code from the other phone below.
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={roomCode}
-          onChangeText={onRoomCodeChange}
-          placeholder="e.g. T8S4YN"
-          placeholderTextColor="#475569"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          autoComplete="off"
-          maxLength={6}
-        />
+          <View style={styles.card}>
+            <Text style={styles.label}>Room code</Text>
+            <Text style={styles.hint}>
+              To join an existing room, type the code from the other phone below.
+              Or tap Create new room to skip this.
+            </Text>
 
-        <Pressable
-          style={[styles.secondaryButton, !canJoin && styles.buttonDisabled]}
-          onPress={onJoinRoom}
-          disabled={!canJoin}
-        >
-          <Text style={styles.secondaryButtonText}>Join room</Text>
-        </Pressable>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                value={roomCode}
+                onChangeText={onRoomCodeChange}
+                placeholder="e.g. T8S4YN"
+                placeholderTextColor="#475569"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+                maxLength={6}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={dismissKeyboard}
+              />
+              {roomCode.length > 0 ? (
+                <Pressable style={styles.clearButton} onPress={handleClearCode}>
+                  <Text style={styles.clearButtonText}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
 
-        <Text style={styles.orDivider}>or</Text>
+            <Pressable
+              style={[
+                canJoin ? styles.primaryButton : styles.secondaryButton,
+                !canJoin && styles.buttonDisabled,
+              ]}
+              onPress={handleJoinRoom}
+              disabled={!canJoin}
+            >
+              <Text
+                style={
+                  canJoin ? styles.primaryButtonText : styles.secondaryButtonText
+                }
+              >
+                Join room
+              </Text>
+            </Pressable>
 
-        <Pressable style={styles.primaryButton} onPress={onCreateRoom}>
-          <Text style={styles.primaryButtonText}>Create new room</Text>
-        </Pressable>
-      </View>
+            <Text style={styles.orDivider}>or</Text>
 
-      <Pressable style={styles.linkButton} onPress={onOpenSettings}>
-        <Text style={styles.linkButtonText}>Change my language</Text>
-      </Pressable>
-    </View>
+            <Pressable
+              style={canJoin ? styles.secondaryButton : styles.primaryButton}
+              onPress={handleCreateRoom}
+            >
+              <Text
+                style={
+                  canJoin ? styles.secondaryButtonText : styles.primaryButtonText
+                }
+              >
+                Create new room
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 48,
+  },
   container: {
     flex: 1,
     backgroundColor: "#0f172a",
     padding: 24,
     justifyContent: "center",
+    minHeight: "100%",
+  },
+  headerArea: {
+    marginBottom: 16,
   },
   title: {
     color: "#f8fafc",
@@ -96,17 +179,24 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#94a3b8",
     fontSize: 16,
-    marginBottom: 16,
   },
   langBadge: {
     alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     backgroundColor: "#1e293b",
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginBottom: 24,
   },
   langBadgeText: {
+    color: "#cbd5e1",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  langBadgeAction: {
     color: "#60a5fa",
     fontSize: 15,
     fontWeight: "600",
@@ -127,6 +217,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  inputRow: {
+    gap: 8,
+  },
   orDivider: {
     color: "#64748b",
     fontSize: 13,
@@ -141,6 +234,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
     letterSpacing: 4,
     textAlign: "center",
+  },
+  clearButton: {
+    alignSelf: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  clearButtonText: {
+    color: "#60a5fa",
+    fontSize: 14,
+    fontWeight: "600",
   },
   primaryButton: {
     backgroundColor: "#3b82f6",
@@ -166,13 +269,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
-  },
-  linkButton: {
-    marginTop: 24,
-    alignItems: "center",
-  },
-  linkButtonText: {
-    color: "#60a5fa",
-    fontSize: 16,
   },
 });
