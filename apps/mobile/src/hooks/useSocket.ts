@@ -122,7 +122,7 @@ export function useSocket({
       }
 
       const timeout = setTimeout(() => {
-        setErrorMessage("Could not claim turn — try again");
+        setErrorMessage("Could not claim turn. Try again.");
         resolve(false);
       }, 3000);
 

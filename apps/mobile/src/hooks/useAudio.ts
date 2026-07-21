@@ -329,7 +329,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     const uri = recording.getURI();
 
     if (!uri) {
-      throw new Error("Recording failed — no audio captured.");
+      throw new Error("Recording failed: no audio captured.");
     }
 
     const audioBase64 = await readAsStringAsync(uri, {
