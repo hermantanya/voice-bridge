@@ -225,9 +225,7 @@ flowchart LR
   v3 --> vision[VISION_v4plus]
 ```
 
-Long-term north star (wearables, multimodal intent): see [VISION.md](VISION.md).
-
-Mission and long-term direction: [VISION.md](VISION.md).
+For mission statement and long-term direction (wearables, multimodal intent, v4+): see [VISION.md](VISION.md).
 
 ## License
 
