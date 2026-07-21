@@ -72,7 +72,7 @@ export function HomeScreen({
           <Pressable style={styles.headerArea} onPress={dismissKeyboard}>
             <Text style={styles.title}>Voice Bridge</Text>
             <Text style={styles.subtitle}>
-              Real-time voice translation between two devices
+              Real-time voice translation in English, Hebrew, or Russian
             </Text>
           </Pressable>
 
