@@ -73,8 +73,6 @@ This parallels multimodal AI research (speech + behavior + environment) but is a
 
 **Wearables** (Meta glasses, smart earbuds) become the natural form factor: always-on, proximity-aware, hands-free, camera + mic for multimodal input.
 
-Keep this vision documented. Do not mix it into v1–v3 engineering scope.
-
 ## Summary
 
 | Horizon | Product |
