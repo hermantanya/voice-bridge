@@ -204,6 +204,8 @@ flowchart LR
 
 Long-term north star (wearables, multimodal intent): see [VISION.md](VISION.md).
 
+Mission and long-term direction: [VISION.md](VISION.md).
+
 ## License
 
 Personal project in real-time voice translation. All rights reserved.
