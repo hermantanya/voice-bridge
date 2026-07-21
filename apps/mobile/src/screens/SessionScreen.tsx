@@ -94,7 +94,7 @@ export function SessionScreen({
       return "You're speaking";
     }
     if (isOpenTurn) {
-      return "Ready — hold to talk";
+      return "Ready: hold to talk";
     }
     return "Partner is speaking";
   })();

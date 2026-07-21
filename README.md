@@ -2,7 +2,7 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in theirs.
 
-**v1.0** — English ↔ Hebrew, push-to-talk, first-come-first-serve turns, phone + browser.
+**v1.0:** English ↔ Hebrew, push-to-talk, first-come-first-serve turns, phone + browser.
 
 ## What it does
 
@@ -33,21 +33,21 @@ Both should show **2 participants**.
 
 ### 3. Talk
 
-1. When both see **Ready — hold to talk**, either person can press first
+1. When both see **Ready: hold to talk**, either person can press first
 2. Hold the button, speak, then release
 3. Wait a few seconds for translation
 4. The other person hears the translated audio automatically
-5. Floor opens again — next person to press speaks
+5. Floor opens again; next person to press speaks
 
 ### Testing with phone + Mac browser
 
 ```bash
-# Terminal 1 — phone (Expo Go)
+# Terminal 1: phone (Expo Go)
 cd apps/mobile
 cp .env.example .env   # first time only; set your server URL in .env
 npx expo start
 
-# Terminal 2 — browser
+# Terminal 2: browser
 cd apps/mobile
 npx expo start --web
 ```
@@ -100,8 +100,8 @@ curl http://localhost:3001/health
 2. Railway → **Deploy from GitHub** → select the repo
 3. Root directory: **repository root** (uses `railway.toml`)
 4. Variables:
-   - `OPENAI_API_KEY` — your key (no trailing spaces)
-   - `CLIENT_ORIGIN` — `*` for dev, restrict in production
+   - `OPENAI_API_KEY`: your key (no trailing spaces)
+   - `CLIENT_ORIGIN`: `*` for dev, restrict in production
 5. Verify: `https://<your-app>.up.railway.app/health`
 
 ### Point the app at your server
@@ -132,9 +132,9 @@ Restart Expo after changing (`npx expo start --clear`).
 
 ## API
 
-`POST /api/translate?sourceLang=en&targetLang=he&format=wav` — send raw audio, get JSON with `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
+`POST /api/translate?sourceLang=en&targetLang=he&format=wav`: send raw audio, get JSON with `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
 
-`GET /health` — server status.
+`GET /health`: server status.
 
 ## Security
 
@@ -167,7 +167,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 - One speaker at a time; floor is open until someone presses (not pre-assigned)
 - ~3–6 second latency per message
 - Web push-to-talk requires Chrome; mic active only while holding button
-- Language setting applies on room join — rejoin after changes
+- Language setting applies on room join; rejoin after changes
 
 ## Roadmap
 
@@ -188,7 +188,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 | v2.0 | Optional hands-free (VAD); pass-through languages (transcribe, no TTS); saved language prefs |
 | v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
 | v2.5 | Per-persona mute/unmute; per-speaker transcripts |
-| v3.0 | Dinner table mode — multi-lingual room, mute matrix, mixed pass-through |
+| v3.0 | Dinner table mode: multi-lingual room, mute matrix, mixed pass-through |
 | v3.1 | Minute-based pricing + usage dashboard |
 
 ### Product arc
