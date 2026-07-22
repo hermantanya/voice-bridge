@@ -72,14 +72,18 @@ While you hold the button or translation is running, the button animates and spe
 
 ## Architecture
 
+**v1.1 (current):** OpenAI for STT, translate, and preset TTS (`nova`).
+
+**v1.2 (in progress):** OpenAI for STT + translate; **ElevenLabs** for cloned-voice TTS. See [EXECUTION_PLAN.md](EXECUTION_PLAN.md).
+
 ```
-Phone/Browser                    Railway Server                    OpenAI
+Phone/Browser                    Railway Server                 OpenAI + ElevenLabs
      │                                │                              │
      │  WebSocket (Socket.io)         │                              │
-     ├───────────────────────────────►│  Whisper STT                 │
-     │  audio_chunk / claim_turn      ├─────────────────────────────►│
-     │                                │  GPT-4o-mini translate       │
-     │◄───────────────────────────────┤  TTS                         │
+     ├───────────────────────────────►│  Whisper STT ───────────────►│ OpenAI
+     │  join_room (+ voice_id)        │  GPT-4o-mini translate ─────►│ OpenAI
+     │  audio_chunk / claim_turn      │  ElevenLabs TTS (speaker's   │
+     │◄───────────────────────────────┤   cloned voice_id) ─────────►│ ElevenLabs
      │  translation_result + audio    │                              │
 ```
 
@@ -98,7 +102,8 @@ voice-bridge/
 ### Prerequisites
 
 - Node.js 20+
-- OpenAI API key with credits
+- OpenAI API key with credits (Whisper + GPT translate)
+- ElevenLabs API key on **Starter** tier or above (v1.2 voice cloning + TTS)
 
 ### Local development
 
@@ -117,6 +122,7 @@ curl http://localhost:3001/health
 3. Root directory: **repository root** (uses `railway.toml`)
 4. Variables:
    - `OPENAI_API_KEY`: your key (no trailing spaces)
+   - `ELEVENLABS_API_KEY`: your key (v1.2+; Starter tier for voice cloning)
    - `CLIENT_ORIGIN`: `*` for dev, restrict in production
 5. Verify: `https://<your-app>.up.railway.app/health`
 
@@ -135,11 +141,33 @@ EXPO_PUBLIC_SERVER_URL=https://your-app.up.railway.app
 
 Restart Expo after changing (`npx expo start --clear`).
 
+### v1.2 real voice (Track 1)
+
+**Provider:** ElevenLabs Instant Voice Cloning (IVC). OpenAI stays on Whisper + GPT translate only.
+
+OpenAI Custom Voices was spiked and blocked (404 — org lacks API access). Full step-by-step plan: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
+
+**Next gate — ElevenLabs spike** (before enrollment UI):
+
+```bash
+cd server
+cp .env.example .env   # OPENAI_API_KEY + ELEVENLABS_API_KEY
+# npm run spike:elevenlabs   # coming in Phase 1
+```
+
+Enrollment target: **~30–45 seconds** of natural speech in the user's language (HE/RU/EN), once per device; `voice_id` reused every session.
+
+Historical OpenAI spike (reference only):
+
+```bash
+npm run spike:voice
+```
+
 ## WebSocket events
 
 | Event | Direction | Purpose |
 |---|---|---|
-| `join_room` | client → server | Join with room code and language |
+| `join_room` | client → server | Join with room code, language, optional `elevenlabsVoiceId` (v1.2) |
 | `claim_turn` | client → server | Claim speaking turn (first press wins) |
 | `audio_chunk` | client → server | Send recorded audio |
 | `turn_state` | server → clients | Whose turn / processing state |
@@ -168,7 +196,7 @@ Restart Expo after changing (`npx expo start --clear`).
 
 Treat your **server URL** like an API key: keep it in `apps/mobile/.env` (gitignored), not in source code. The repo ships `.env.example` with a placeholder.
 
-The mobile app connects to your Railway deployment. If someone learns that URL, they could use your server and spend OpenAI credits. Rate limits (below) reduce that risk.
+The mobile app connects to your Railway deployment. If someone learns that URL, they could use your server and spend OpenAI and ElevenLabs credits. Rate limits (below) reduce that risk.
 
 **Built-in rate limits** (per IP / per connection):
 
@@ -194,15 +222,17 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 ## Roadmap
 
+Near-term engineering steps for v1.2: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
+
 ### Shipped and next (v1.x)
 
 | Version | Features |
 |---|---|
 | **v1.0** (done) | EN ↔ HE, 2 participants, push-to-talk, first-come-first-serve turns, phone + web |
 | **v1.1** (done) | + Russian (EN ↔ HE ↔ RU); scrollable transcript; session + speaking time stats; web mic picker; merged room usage on server (for future billing) |
-| v1.2 | Voice matching (speaker tone in 1:1) |
+| v1.2 | Real voice on translated speech (enroll once ~30–45s; partner hears **your** cloned voice via ElevenLabs IVC). **In progress:** ElevenLabs spike → server TTS swap → Settings enrollment + device-local `voice_id`. Plan: [EXECUTION_PLAN.md](EXECUTION_PLAN.md) |
 | v1.3 | Auto-detect spoken language; user sets preferred hearing language only |
-| v1.4 | App Store / PWA, basic user profiles |
+| v1.4 | App Store / PWA; signed-in user profiles; sync voice across devices |
 
 ### Group and table (v2–v3)
 

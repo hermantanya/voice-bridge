@@ -50,7 +50,7 @@ This requires per-user language profiles (saved in v1.4+, expanded in v2.0).
 | Why minutes | Why not tokens |
 |---|---|
 | Users understand "minutes of conversation" | Token counts are invisible to normal people |
-| Maps to Whisper + TTS costs | Matches OpenAI billing, not human mental models |
+| Maps to Whisper + translate + TTS costs (OpenAI + ElevenLabs) | Matches provider billing, not human mental models |
 
 Suggested tiers:
 
