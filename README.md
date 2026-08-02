@@ -74,7 +74,7 @@ While you hold the button or translation is running, the button animates and spe
 
 **v1.1 (current):** OpenAI for STT, translate, and preset TTS (`nova`).
 
-**v1.2 (in progress):** OpenAI for STT + translate; **ElevenLabs** for cloned-voice TTS. See [EXECUTION_PLAN.md](EXECUTION_PLAN.md).
+**v1.2 (in progress):** OpenAI for STT + translate; **cloned-voice TTS** via Fish Audio or ElevenLabs (spike gate). See [EXECUTION_PLAN.md](EXECUTION_PLAN.md).
 
 ```
 Phone/Browser                    Railway Server                 OpenAI + ElevenLabs
@@ -143,19 +143,27 @@ Restart Expo after changing (`npx expo start --clear`).
 
 ### v1.2 real voice (Track 1)
 
-**Provider:** ElevenLabs Instant Voice Cloning (IVC). OpenAI stays on Whisper + GPT translate only.
+**Provider:** TTS provider TBD after spike gate — **Fish Audio** (free API, private clones) or **ElevenLabs IVC** (Starter $6/mo). OpenAI stays on Whisper + GPT translate only.
 
 OpenAI Custom Voices was spiked and blocked (404 — org lacks API access). Full step-by-step plan: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 
-**Next gate — ElevenLabs spike** (before enrollment UI):
+**Spike gate — run both before enrollment UI:**
 
 ```bash
 cd server
-cp .env.example .env   # OPENAI_API_KEY + ELEVENLABS_API_KEY
-# npm run spike:elevenlabs   # coming in Phase 1
+cp .env.example .env   # OPENAI_API_KEY + FISH_API_KEY (+ ELEVENLABS_API_KEY later)
+
+# Fish Audio (free API tier, private clone)
+npm run spike:voice:fish
+npm run spike:voice:fish -- --sample ./tmp/voice-sample.wav
+
+# ElevenLabs (coming in Phase 1b)
+# npm run spike:elevenlabs
 ```
 
-Enrollment target: **~30–45 seconds** of natural speech in the user's language (HE/RU/EN), once per device; `voice_id` reused every session.
+Listen to `server/tmp/voice-spike-fish/fish-clone-{en,he,ru}.mp3` and compare.
+
+Enrollment target: **~15–45 seconds** of natural speech in the user's language (HE/RU/EN), once per device; `voice_id` / `reference_id` reused every session.
 
 Historical OpenAI spike (reference only):
 

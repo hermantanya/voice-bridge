@@ -2,9 +2,19 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** July 2026 (v1.2 pivot to ElevenLabs)
+**Last updated:** August 2026 (v1.2 — Fish + ElevenLabs spike gate)
 
 ---
+
+## Provider decision (August 2026)
+
+| Provider | Spike | Private clone | HE + RU | Free tier for dev |
+|---|---|---|---|---|
+| OpenAI Custom Voices | ❌ 404 (no org access) | — | — | — |
+| **Fish Audio API** | `npm run spike:voice:fish` | ✅ `visibility: private` | ✅ (83 langs) | ✅ `s2.1-pro-free` (fair use) |
+| **ElevenLabs IVC** | `npm run spike:elevenlabs` (planned) | ✅ private | ✅ (v3 + `language_code`) | ❌ cloning needs **Starter $6/mo** |
+
+**Gate:** Run **both** Fish and ElevenLabs spikes with the same ~30s sample. Pick the provider that sounds most like you in HE and RU with acceptable latency. Default build target until then: **ElevenLabs** (already in plan); **Fish** if quality wins and free API tier holds for 5 testers.
 
 ## Current state
 
@@ -27,15 +37,15 @@ We planned **OpenAI Custom Voices** for Track 1 (real voice). Spike result:
 | Preset OpenAI TTS (`nova`) | ✅ Works |
 | OpenAI Custom Voices API | ❌ 404 — org lacks access (enterprise/eligibility) |
 
-**Decision:** Keep OpenAI for **STT + translation** only. Replace **TTS** with **ElevenLabs Instant Voice Cloning (IVC)**.
+**Decision:** Keep OpenAI for **STT + translation** only. Replace **TTS** with a **cloned-voice provider** — **ElevenLabs IVC** (planned default) or **Fish Audio** (API alternative; see spike gate below).
 
 **Rejected alternatives:**
 
-| Provider | Why not |
+| Provider | Why not (for now) |
 |---|---|
 | xAI Custom Voices | No official Hebrew in TTS list; US geo restriction; programmatic create = Enterprise |
-| Cartesia | Evaluated; ElevenLabs chosen for IVC + Hebrew v3 path |
-| OpenAI Custom Voices | Blocked on account access |
+| Cartesia | Evaluated; ElevenLabs/Fish under active spike |
+| OpenAI Custom Voices | Blocked on account access (404) |
 
 ---
 
@@ -74,11 +84,36 @@ Settings → record ~30–45s sample (user's language)
 - [x] Confirm preset TTS works
 - [x] Confirm Custom Voices API unavailable → pivot decision
 
-### Phase 1 — ElevenLabs spike (gate)
+### Phase 1 — TTS provider spike (gate)
 
-**Goal:** Validate quality and latency before building UI.
+**Goal:** Validate quality and latency before building enrollment UI. Run **Fish** and **ElevenLabs** with the **same** voice sample; pick a winner.
 
-- [ ] Sign up ElevenLabs **Starter** (~$5/mo)
+#### 1a — Fish Audio spike
+
+- [ ] Sign up at [fish.audio](https://fish.audio) → create API key
+- [ ] Add `FISH_API_KEY` to `server/.env`
+- [ ] Run access check:
+
+```bash
+cd server
+npm run spike:voice:fish
+```
+
+- [ ] Full test (~15–30s sample, wav/mp3/m4a/webm):
+
+```bash
+npm run spike:voice:fish -- --sample ./tmp/voice-sample.wav
+```
+
+- [ ] Listen to `server/tmp/voice-spike-fish/fish-clone-en.mp3`, `-he.mp3`, `-ru.mp3`
+- [ ] Note: private clone (`visibility: private`), no consent script; uses `s2.1-pro-free`
+- [ ] Re-use existing clone: `--reference YOUR_VOICE_ID` (skip re-create)
+
+**Fish free-tier notes:** Web app free plan = 3 **public** slots only (~7 min/mo). **Voice Bridge uses the API**, not web slots — private models via `POST /model`. Subject to fair-use on `s2.1-pro-free`.
+
+#### 1b — ElevenLabs spike
+
+- [ ] Sign up ElevenLabs **Starter** (~$6/mo) — IVC not on official Free plan
 - [ ] Add `ELEVENLABS_API_KEY` to `server/.env` and Railway
 - [ ] Add `server/scripts/spike-elevenlabs-voice.ts` (or extend spike script):
   - Clone ~30–45s sample via IVC API → `voice_id`
@@ -86,11 +121,24 @@ Settings → record ~30–45s sample (user's language)
   - Hebrew: use **Eleven v3** + `language_code: "he"`
 - [ ] Document spike results (pass/fail, latency, quality notes)
 
-**Do not proceed to Phase 2 if spike fails.**
+#### 1c — Pick provider
+
+| Criterion | Fish wins if… | ElevenLabs wins if… |
+|---|---|---|
+| Sound quality (HE/RU) | Blind test prefers Fish samples | Blind test prefers ElevenLabs |
+| Cost (5 testers) | Free API tier sufficient | Worth $6/mo for slots + quality |
+| Latency | ≤ current ~3–6s turn budget | Same |
+| Ops | Happy with Fish fair-use / billing | Need ElevenLabs ecosystem |
+
+Update this file + README with chosen provider before Phase 2.
+
+**Do not proceed to Phase 2 if both spikes fail.**
 
 ### Phase 2 — Server
 
-- [ ] Add ElevenLabs client + `server/src/voices/elevenlabs.ts`
+*(Adjust module names if Fish wins spike: `fishAudio.ts` instead of `elevenlabs.ts`.)*
+
+- [ ] Add TTS client — `server/src/voices/elevenlabs.ts` **or** `fishAudio.ts` (Fish helpers already stubbed)
 - [ ] Replace `server/src/pipeline/tts.ts` — ElevenLabs TTS with `voice_id` + target language
 - [ ] Extend `runTranslationPipeline()` to accept optional `voiceId`
 - [ ] Wire handler: on translate, use **speaker's** `socket.data.elevenlabsVoiceId`
@@ -138,7 +186,8 @@ Settings → record ~30–45s sample (user's language)
 | Variable | Where | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | Server | Whisper + GPT translate (unchanged) |
-| `ELEVENLABS_API_KEY` | Server | IVC enroll + TTS |
+| `ELEVENLABS_API_KEY` | Server | IVC enroll + TTS (if ElevenLabs wins spike) |
+| `FISH_API_KEY` | Server | Private clone + TTS (if Fish wins spike) |
 | `EXPO_PUBLIC_SERVER_URL` | Mobile | Backend URL (unchanged) |
 
 ---
@@ -181,8 +230,10 @@ Settings → record ~30–45s sample (user's language)
 
 ```
 server/
-  scripts/spike-elevenlabs-voice.ts   (new)
-  src/voices/elevenlabs.ts            (new)
+  scripts/spike-custom-voice-fish.ts  (Fish spike — ready)
+  scripts/spike-elevenlabs-voice.ts   (planned)
+  src/voices/fishAudio.ts             (Fish API helpers — ready)
+  src/voices/elevenlabs.ts            (planned, if ElevenLabs wins)
   src/pipeline/tts.ts                 (replace OpenAI TTS)
   src/pipeline/index.ts               (voiceId param)
   src/ws/handler.ts                   (join_room + speaker voice_id)
@@ -203,3 +254,4 @@ apps/mobile/
 - Product roadmap (user-facing): [README.md](README.md#roadmap)
 - Long-term vision: [VISION.md](VISION.md)
 - OpenAI spike (historical): `npm run spike:voice` in `server/`
+- Fish spike: `npm run spike:voice:fish` in `server/`
