@@ -9,6 +9,7 @@ export type PipelineInput = {
   format?: string;
   speakerGender?: SpeakerGender;
   addresseeGender?: SpeakerGender;
+  voiceId?: string;
 };
 
 export type PipelineResult = {
@@ -41,7 +42,10 @@ export async function runTranslationPipeline(
     input.addresseeGender,
   );
 
-  const audio = await synthesize(translatedText);
+  const audio = await synthesize(translatedText, {
+    voiceId: input.voiceId,
+    targetLang: input.targetLang,
+  });
 
   return {
     sourceLang: input.sourceLang,

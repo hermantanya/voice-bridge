@@ -5,13 +5,15 @@ import { StatusBar } from "expo-status-bar";
 import type { LanguageCode, SpeakerGender } from "./src/config";
 import { useAudio } from "./src/hooks/useAudio";
 import { useSocket } from "./src/hooks/useSocket";
+import { useVoiceProfile } from "./src/hooks/useVoiceProfile";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { VoiceSetupScreen } from "./src/screens/VoiceSetupScreen";
 
-type Screen = "home" | "session" | "settings";
+type Screen = "home" | "session" | "settings" | "voiceSetup";
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -21,6 +23,7 @@ export default function App() {
   const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
   const [homeResetKey, setHomeResetKey] = useState(0);
 
+  const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
@@ -38,6 +41,7 @@ export default function App() {
     roomCode: activeRoomCode,
     myLang,
     speakerGender,
+    elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
     enabled: inSession,
     onIncomingTranslation: handleIncomingTranslation,
   });
@@ -121,6 +125,18 @@ export default function App() {
   }, [audio.releaseMicrophone, socket.disconnect]);
 
   const content = useMemo(() => {
+    if (screen === "voiceSetup") {
+      return (
+        <VoiceSetupScreen
+          myLang={myLang}
+          speakerGender={speakerGender}
+          existingVoiceId={voiceProfile.elevenlabsVoiceId}
+          onComplete={voiceProfile.setElevenLabsVoiceId}
+          onBack={() => setScreen("settings")}
+        />
+      );
+    }
+
     if (screen === "settings") {
       return (
         <SettingsScreen
@@ -128,6 +144,9 @@ export default function App() {
           onMyLangChange={setMyLang}
           speakerGender={speakerGender}
           onSpeakerGenderChange={setSpeakerGender}
+          voiceStatus={voiceProfile.voiceStatus}
+          onOpenVoiceSetup={() => setScreen("voiceSetup")}
+          onRemoveVoice={voiceProfile.removeElevenLabsVoice}
           onBack={() => setScreen("home")}
           showMicrophoneSettings={Platform.OS === "web"}
           microphoneDevices={audio.inputDevices}
@@ -171,6 +190,7 @@ export default function App() {
         roomCode={roomCode}
         myLang={myLang}
         speakerGender={speakerGender}
+        voiceStatus={voiceProfile.voiceStatus}
         onRoomCodeChange={(value) => setRoomCode(value.toUpperCase())}
         onCreateRoom={() => {
           const code = generateRoomCode();
@@ -201,6 +221,10 @@ export default function App() {
     homeResetKey,
     myLang,
     speakerGender,
+    voiceProfile.elevenlabsVoiceId,
+    voiceProfile.removeElevenLabsVoice,
+    voiceProfile.setElevenLabsVoiceId,
+    voiceProfile.voiceStatus,
     roomCode,
     screen,
     socket.myBillableMs,

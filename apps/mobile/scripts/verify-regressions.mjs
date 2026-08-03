@@ -34,19 +34,47 @@ const checks = [
   {
     name: "home screen profile badge",
     file: "src/screens/HomeScreen.tsx",
-    required: ["formatProfileBadge", "canJoinRoom"],
+    required: ["formatProfileBadge", "canJoinRoom", "voiceStatus", "voiceStatusDot"],
   },
   {
     name: "socket uses stable join payload refs",
     file: "src/hooks/useSocket.ts",
     required: [
       "speakerGenderRef",
+      "elevenlabsVoiceIdRef",
       "buildJoinRoomPayload",
       "participants_sync",
       "releaseTurn",
       "shouldApplyTurnState",
     ],
     forbidden: ["speakerGender,\n    resetTurnState"],
+  },
+  {
+    name: "voice profile hook and storage exist",
+    file: "src/hooks/useVoiceProfile.ts",
+    required: [
+      "loadElevenLabsVoiceId",
+      "saveElevenLabsVoiceId",
+      "voiceStatus",
+      "removeElevenLabsVoice",
+    ],
+  },
+  {
+    name: "voice setup screen exists",
+    file: "src/screens/VoiceSetupScreen.tsx",
+    required: [
+      "Set up my voice",
+      "Stop recording",
+      "Create my voice",
+      "enrollVoice",
+      "MIN_ENROLLMENT_DURATION_MS",
+      "getEnrollmentPrompt",
+    ],
+  },
+  {
+    name: "voice enrollment client exists",
+    file: "src/api/enrollVoice.ts",
+    required: ["/api/voices/enroll", "deleteEnrolledVoice", "voiceId"],
   },
   {
     name: "audio stop returns delivery status",
@@ -56,7 +84,12 @@ const checks = [
   {
     name: "mobile feature tests exist",
     file: "src/session/appState.test.ts",
-    required: ["buildJoinRoomPayload", "formatProfileBadge"],
+    required: [
+      "buildJoinRoomPayload",
+      "formatProfileBadge",
+      "voiceProfileLabel",
+      "resolveVoiceProfileStatus",
+    ],
   },
   {
     name: "server join race fix and release_turn",
@@ -68,8 +101,26 @@ const checks = [
       "participants_sync",
       "release_turn",
       "speakerGender",
+      "elevenlabsVoiceId",
+      "voiceId: socket.data.elevenlabsVoiceId",
     ],
     forbidden: ["syncRoomParticipants", "room.participantIds = liveIds"],
+  },
+  {
+    name: "voice enrollment route and ElevenLabs pipeline",
+    file: "src/routes/voices.ts",
+    root: serverRoot,
+    required: [
+      "createInstantVoiceCloneFromBuffer",
+      "deleteElevenLabsVoice",
+      "previewAudioBase64",
+    ],
+  },
+  {
+    name: "pipeline uses cloned voice when voiceId is present",
+    file: "src/pipeline/index.ts",
+    root: serverRoot,
+    required: ["voiceId?: string", "voiceId: input.voiceId"],
   },
   {
     name: "gender translation prompt extracted and tested",

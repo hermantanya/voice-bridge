@@ -13,6 +13,7 @@ import {
   type LanguageCode,
   type SpeakerGender,
 } from "../config";
+import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
 
 type SettingsScreenProps = {
@@ -20,6 +21,9 @@ type SettingsScreenProps = {
   onMyLangChange: (lang: LanguageCode) => void;
   speakerGender: SpeakerGender;
   onSpeakerGenderChange: (gender: SpeakerGender) => void;
+  voiceStatus: VoiceProfileStatus;
+  onOpenVoiceSetup: () => void;
+  onRemoveVoice: () => Promise<void>;
   onBack: () => void;
   showMicrophoneSettings?: boolean;
   microphoneDevices?: MicrophoneDevice[];
@@ -33,6 +37,9 @@ export function SettingsScreen({
   onMyLangChange,
   speakerGender,
   onSpeakerGenderChange,
+  voiceStatus,
+  onOpenVoiceSetup,
+  onRemoveVoice,
   onBack,
   showMicrophoneSettings = false,
   microphoneDevices = [],
@@ -97,6 +104,50 @@ export function SettingsScreen({
         })}
       </View>
 
+      <Text style={[styles.title, styles.sectionTitle]}>My voice</Text>
+      <Text style={styles.subtitle}>
+        Enroll once so your partner hears translations in your voice, not a
+        preset. Stored on this device until you remove it.
+      </Text>
+
+      <View style={styles.card}>
+        <View style={styles.statusRow}>
+          <View
+            style={[
+              styles.statusDot,
+              voiceStatus === "custom"
+                ? styles.statusDotReady
+                : styles.statusDotDefault,
+            ]}
+          />
+          <View style={styles.statusCopy}>
+            <Text style={styles.statusTitle}>{voiceProfileLabel(voiceStatus)}</Text>
+            <Text style={styles.statusHint}>
+              {voiceStatus === "custom"
+                ? "Partners hear your enrolled voice when you speak."
+                : "Partners hear a preset voice until you set up yours."}
+            </Text>
+          </View>
+        </View>
+
+        <Pressable style={styles.setupButton} onPress={onOpenVoiceSetup}>
+          <Text style={styles.setupButtonText}>
+            {voiceStatus === "custom" ? "Re-enroll my voice" : "Set up my voice"}
+          </Text>
+        </Pressable>
+
+        {voiceStatus === "custom" ? (
+          <Pressable
+            style={styles.removeButton}
+            onPress={() => {
+              void onRemoveVoice();
+            }}
+          >
+            <Text style={styles.removeButtonText}>Remove my voice</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
       {showMicrophoneSettings ? (
         <>
           <Text style={[styles.title, styles.sectionTitle]}>Microphone</Text>
@@ -142,7 +193,7 @@ export function SettingsScreen({
           Each device should use the language spoken on that device.
         </Text>
         <Text style={styles.exampleText}>
-          Leave and rejoin the room after changing language or gender.
+          Leave and rejoin the room after changing language, gender, or voice.
         </Text>
       </View>
 
@@ -217,6 +268,59 @@ const styles = StyleSheet.create({
   },
   optionTextActive: {
     color: "#ffffff",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 4,
+    flexShrink: 0,
+  },
+  statusDotReady: {
+    backgroundColor: "#34d399",
+  },
+  statusDotDefault: {
+    backgroundColor: "#64748b",
+  },
+  statusCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  statusTitle: {
+    color: "#f8fafc",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  statusHint: {
+    color: "#94a3b8",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  setupButton: {
+    marginTop: 8,
+    backgroundColor: "#3b82f6",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  setupButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  removeButton: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  removeButtonText: {
+    color: "#fca5a5",
+    fontSize: 14,
+    fontWeight: "600",
   },
   exampleCard: {
     marginTop: 20,

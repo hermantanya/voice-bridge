@@ -4,6 +4,7 @@
   "description": "Real-time voice translation app (English, Hebrew, Russian). Expo for iOS, Android, and web.",
   "main": "index.ts",
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.35",
     "expo-asset": "~12.0.13",
     "expo-av": "~16.0.8",

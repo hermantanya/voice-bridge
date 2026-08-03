@@ -49,7 +49,7 @@ function sampleMimeType(samplePath: string): string {
   if (ext === "wav") return "audio/wav";
   if (ext === "webm") return "audio/webm";
   if (ext === "mp3") return "audio/mpeg";
-  if (ext === "m4a" || ext === "mp4") return "audio/mp4";
+  if (ext === "m4a" || ext === "mp4" || ext === "caf") return "audio/mp4";
   if (ext === "flac") return "audio/flac";
   return "application/octet-stream";
 }
@@ -93,7 +93,25 @@ export async function createInstantVoiceClone(params: {
   gender?: "female" | "male";
 }): Promise<ElevenLabsVoice> {
   const sample = await readFile(params.samplePath);
-  const mimeType = sampleMimeType(params.samplePath);
+  return createInstantVoiceCloneFromBuffer({
+    name: params.name,
+    sample,
+    sampleFilename: path.basename(params.samplePath),
+    description: params.description,
+    removeBackgroundNoise: params.removeBackgroundNoise,
+    gender: params.gender,
+  });
+}
+
+export async function createInstantVoiceCloneFromBuffer(params: {
+  name: string;
+  sample: Buffer;
+  sampleFilename: string;
+  description?: string;
+  removeBackgroundNoise?: boolean;
+  gender?: "female" | "male";
+}): Promise<ElevenLabsVoice> {
+  const mimeType = sampleMimeType(params.sampleFilename);
 
   const form = new FormData();
   form.append("name", params.name);
@@ -109,8 +127,8 @@ export async function createInstantVoiceClone(params: {
   }
   form.append(
     "files",
-    new Blob([sample], { type: mimeType }),
-    path.basename(params.samplePath),
+    new Blob([new Uint8Array(params.sample)], { type: mimeType }),
+    params.sampleFilename,
   );
 
   const response = await elevenLabsFetch("/voices/add", {
@@ -136,6 +154,27 @@ export async function createInstantVoiceClone(params: {
     name: params.name,
     category: "cloned",
   };
+}
+
+export async function deleteElevenLabsVoice(voiceId: string): Promise<void> {
+  const response = await elevenLabsFetch(`/voices/${voiceId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    let message = `Delete ElevenLabs voice failed (${response.status})`;
+    try {
+      const body = (await response.json()) as {
+        detail?: { message?: string };
+      };
+      if (body.detail?.message) {
+        message = body.detail.message;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
 }
 
 /** Per-language model routing — Hebrew is NOT on multilingual_v2 (29 langs). */

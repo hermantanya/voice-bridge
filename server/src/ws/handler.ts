@@ -21,6 +21,7 @@ type JoinRoomPayload = {
   speakLang?: string;
   hearLang?: string;
   speakerGender?: "female" | "male";
+  elevenlabsVoiceId?: string;
 };
 
 type AudioChunkPayload = {
@@ -174,7 +175,8 @@ export function registerSocketHandlers(
     console.log(`client connected: ${socket.id}`);
 
     socket.on("join_room", async (payload: JoinRoomPayload) => {
-      const { roomCode, speakLang, hearLang, speakerGender } = payload;
+      const { roomCode, speakLang, hearLang, speakerGender, elevenlabsVoiceId } =
+        payload;
 
       if (!roomCode?.trim()) {
         socket.emit("error", { message: "roomCode is required" });
@@ -204,6 +206,11 @@ export function registerSocketHandlers(
       socket.data.hearLang = myLang;
       if (speakerGender === "female" || speakerGender === "male") {
         socket.data.speakerGender = speakerGender;
+      }
+      if (elevenlabsVoiceId?.trim()) {
+        socket.data.elevenlabsVoiceId = elevenlabsVoiceId.trim();
+      } else {
+        delete socket.data.elevenlabsVoiceId;
       }
 
       ensureSessionStarted(room);
@@ -397,6 +404,7 @@ export function registerSocketHandlers(
           format: payload.format ?? "webm",
           speakerGender,
           addresseeGender,
+          voiceId: socket.data.elevenlabsVoiceId as string | undefined,
         });
 
         const turnActiveMs = speechMs + result.latencyMs;

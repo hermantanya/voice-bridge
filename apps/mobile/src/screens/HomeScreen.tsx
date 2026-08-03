@@ -12,12 +12,17 @@ import {
 } from "react-native";
 
 import { type LanguageCode, type SpeakerGender } from "../config";
-import { formatProfileBadge, canJoinRoom } from "../session/appState";
+import {
+  formatProfileBadge,
+  canJoinRoom,
+  type VoiceProfileStatus,
+} from "../session/appState";
 
 type HomeScreenProps = {
   roomCode: string;
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
+  voiceStatus: VoiceProfileStatus;
   onRoomCodeChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -28,6 +33,7 @@ export function HomeScreen({
   roomCode,
   myLang,
   speakerGender,
+  voiceStatus,
   onRoomCodeChange,
   onCreateRoom,
   onJoinRoom,
@@ -80,9 +86,19 @@ export function HomeScreen({
           </Pressable>
 
           <Pressable style={styles.langBadge} onPress={handleOpenSettings}>
-            <Text style={styles.langBadgeText} numberOfLines={1}>
-              {formatProfileBadge(myLang, speakerGender)}
-            </Text>
+            <View style={styles.langBadgeMain}>
+              <View
+                style={[
+                  styles.voiceStatusDot,
+                  voiceStatus === "custom"
+                    ? styles.voiceStatusDotCustom
+                    : styles.voiceStatusDotDefault,
+                ]}
+              />
+              <Text style={styles.langBadgeText} numberOfLines={2}>
+                {formatProfileBadge(myLang, speakerGender, voiceStatus)}
+              </Text>
+            </View>
             <Text style={styles.langBadgeAction}>Settings</Text>
           </Pressable>
 
@@ -194,6 +210,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 24,
+  },
+  langBadgeMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  voiceStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+  },
+  voiceStatusDotCustom: {
+    backgroundColor: "#34d399",
+  },
+  voiceStatusDotDefault: {
+    backgroundColor: "#64748b",
   },
   langBadgeText: {
     flex: 1,

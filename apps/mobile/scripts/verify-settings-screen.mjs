@@ -13,6 +13,9 @@ const required = [
   ["Save and go back", "save button label"],
   ["showMicrophoneSettings", "microphone settings section"],
   ["My gender", "gender settings section"],
+  ["My voice", "voice profile section"],
+  ["Set up my voice", "voice setup entry point"],
+  ["voiceProfileLabel", "voice profile status label"],
   ["paddingTop: 64", "desktop top padding"],
 ];
 

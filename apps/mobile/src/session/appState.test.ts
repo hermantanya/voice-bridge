@@ -6,14 +6,30 @@ import {
   canJoinRoom,
   formatProfileBadge,
   generateRoomCode,
+  hasCustomVoice,
   normalizeRoomCode,
+  resolveVoiceProfileStatus,
   shouldApplyTurnState,
   shouldClearPartnerLang,
+  voiceProfileLabel,
 } from "./appState.js";
 
-test("formatProfileBadge shows language and gender", () => {
-  assert.equal(formatProfileBadge("he", "female"), "Hebrew · Female");
-  assert.equal(formatProfileBadge("en", "male"), "English · Male");
+test("formatProfileBadge shows language, gender, and voice status", () => {
+  assert.equal(formatProfileBadge("he", "female"), "Hebrew · Female · Preset voice");
+  assert.equal(formatProfileBadge("en", "male"), "English · Male · Preset voice");
+  assert.equal(
+    formatProfileBadge("ru", "female", "custom"),
+    "Russian · Female · My voice",
+  );
+});
+
+test("voice profile helpers resolve custom voice state", () => {
+  assert.equal(voiceProfileLabel("default"), "Preset voice");
+  assert.equal(voiceProfileLabel("custom"), "My voice");
+  assert.equal(hasCustomVoice(null), false);
+  assert.equal(hasCustomVoice(" voice123 "), true);
+  assert.equal(resolveVoiceProfileStatus("abc"), "custom");
+  assert.equal(resolveVoiceProfileStatus(""), "default");
 });
 
 test("normalizeRoomCode trims and uppercases", () => {
@@ -30,7 +46,7 @@ test("generateRoomCode returns six uppercase characters", () => {
   assert.match(code, /^[A-Z0-9]{6}$/);
 });
 
-test("buildJoinRoomPayload sends language and gender on join", () => {
+test("buildJoinRoomPayload sends language, gender, and optional voice id", () => {
   assert.deepEqual(
     buildJoinRoomPayload({
       roomCode: "ABCD",
@@ -42,6 +58,22 @@ test("buildJoinRoomPayload sends language and gender on join", () => {
       speakLang: "ru",
       hearLang: "ru",
       speakerGender: "male",
+    },
+  );
+
+  assert.deepEqual(
+    buildJoinRoomPayload({
+      roomCode: "ABCD",
+      myLang: "en",
+      speakerGender: "female",
+      elevenlabsVoiceId: " voice-123 ",
+    }),
+    {
+      roomCode: "ABCD",
+      speakLang: "en",
+      hearLang: "en",
+      speakerGender: "female",
+      elevenlabsVoiceId: "voice-123",
     },
   );
 });

@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import { registerSocketHandlers } from "./ws/handler.js";
 import { createSocketRateLimits, registerRateLimitMiddleware } from "./ws/rateLimit.js";
 import { translateRouter } from "./routes/translate.js";
+import { voicesRouter } from "./routes/voices.js";
 import { clientIp, createRateLimiter } from "./rateLimit.js";
 
 dotenv.config();
@@ -14,7 +15,9 @@ dotenv.config();
 const PORT = Number(process.env.PORT) || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "*";
 const translatePerHour = Number(process.env.RATE_LIMIT_TRANSLATE_PER_HOUR ?? 30);
+const enrollPerHour = Number(process.env.RATE_LIMIT_ENROLL_PER_HOUR ?? 10);
 const translateLimiter = createRateLimiter(translatePerHour, 60 * 60_000);
+const enrollLimiter = createRateLimiter(enrollPerHour, 60 * 60_000);
 const socketRateLimits = createSocketRateLimits();
 
 const app = express();
@@ -52,6 +55,27 @@ app.use(
   },
   express.raw({ type: "*/*", limit: "15mb" }),
   translateRouter,
+);
+
+app.use(
+  "/api/voices",
+  (req, res, next) => {
+    const ip = clientIp(req.ip, req.headers["x-forwarded-for"] as string | undefined);
+
+    if (!enrollLimiter.allow(ip)) {
+      const retryMinutes = Math.max(
+        1,
+        Math.ceil(enrollLimiter.remainingMs(ip) / 60_000),
+      );
+      res.status(429).json({
+        error: `Enrollment rate limit exceeded. Try again in about ${retryMinutes} minute(s).`,
+      });
+      return;
+    }
+
+    next();
+  },
+  voicesRouter,
 );
 
 app.get("/health", (_req, res) => {

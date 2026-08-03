@@ -111,6 +111,7 @@ type UseSocketOptions = {
   roomCode: string;
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
+  elevenlabsVoiceId?: string | null;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
@@ -119,6 +120,7 @@ export function useSocket({
   roomCode,
   myLang,
   speakerGender,
+  elevenlabsVoiceId = null,
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
@@ -126,6 +128,7 @@ export function useSocket({
   const onIncomingRef = useRef(onIncomingTranslation);
   const myLangRef = useRef(myLang);
   const speakerGenderRef = useRef(speakerGender);
+  const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
   const roomCodeRef = useRef(roomCode);
   const turnStateRef = useRef<TurnState>({
     turnParticipantId: null,
@@ -295,6 +298,10 @@ export function useSocket({
   }, [speakerGender]);
 
   useEffect(() => {
+    elevenlabsVoiceIdRef.current = elevenlabsVoiceId;
+  }, [elevenlabsVoiceId]);
+
+  useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
@@ -462,6 +469,7 @@ export function useSocket({
           roomCode: roomCodeRef.current,
           myLang: myLangRef.current,
           speakerGender: speakerGenderRef.current,
+          elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
         }),
       );
     });

@@ -1,11 +1,30 @@
 import type { LanguageCode, SpeakerGender } from "../config";
 import { languageLabel, speakerGenderLabel } from "../config";
 
+export type VoiceProfileStatus = "custom" | "default";
+
+export function hasCustomVoice(
+  elevenlabsVoiceId: string | null | undefined,
+): boolean {
+  return Boolean(elevenlabsVoiceId?.trim());
+}
+
+export function resolveVoiceProfileStatus(
+  elevenlabsVoiceId: string | null | undefined,
+): VoiceProfileStatus {
+  return hasCustomVoice(elevenlabsVoiceId) ? "custom" : "default";
+}
+
+export function voiceProfileLabel(status: VoiceProfileStatus): string {
+  return status === "custom" ? "My voice" : "Preset voice";
+}
+
 export function formatProfileBadge(
   myLang: LanguageCode,
   speakerGender: SpeakerGender,
+  voiceStatus: VoiceProfileStatus = "default",
 ): string {
-  return `${languageLabel(myLang)} · ${speakerGenderLabel(speakerGender)}`;
+  return `${languageLabel(myLang)} · ${speakerGenderLabel(speakerGender)} · ${voiceProfileLabel(voiceStatus)}`;
 }
 
 export function normalizeRoomCode(code: string): string {
@@ -24,13 +43,26 @@ export function buildJoinRoomPayload(input: {
   roomCode: string;
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
+  elevenlabsVoiceId?: string | null;
 }) {
-  return {
+  const payload: {
+    roomCode: string;
+    speakLang: LanguageCode;
+    hearLang: LanguageCode;
+    speakerGender: SpeakerGender;
+    elevenlabsVoiceId?: string;
+  } = {
     roomCode: input.roomCode,
     speakLang: input.myLang,
     hearLang: input.myLang,
     speakerGender: input.speakerGender,
   };
+
+  if (hasCustomVoice(input.elevenlabsVoiceId)) {
+    payload.elevenlabsVoiceId = input.elevenlabsVoiceId!.trim();
+  }
+
+  return payload;
 }
 
 export type TurnPhase = "waiting" | "speaking" | "processing";
