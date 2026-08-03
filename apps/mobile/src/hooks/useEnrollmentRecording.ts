@@ -3,6 +3,8 @@ import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import { acquireWebMicrophoneStream } from "../web/microphoneDevices";
+
 export type EnrollmentRecordingResult = {
   audioBase64: string;
   format: string;
@@ -93,7 +95,7 @@ export function useEnrollmentRecording() {
     await ensurePermissions();
 
     if (Platform.OS === "web") {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await acquireWebMicrophoneStream();
       mediaStreamRef.current = stream;
       webChunksRef.current = [];
 

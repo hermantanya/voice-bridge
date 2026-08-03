@@ -72,9 +72,9 @@ const checks = [
     ],
   },
   {
-    name: "voice enrollment client exists",
-    file: "src/api/enrollVoice.ts",
-    required: ["/api/voices/enroll", "deleteEnrolledVoice", "voiceId"],
+    name: "enrollment recording respects saved web microphone",
+    file: "src/hooks/useEnrollmentRecording.ts",
+    required: ["acquireWebMicrophoneStream"],
   },
   {
     name: "audio stop returns delivery status",

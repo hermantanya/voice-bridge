@@ -6,6 +6,7 @@ import {
   isRemotePhoneMic,
   isVirtualMicDevice,
   preferBuiltInMic,
+  resolveWebMicDeviceId,
 } from "./microphoneDevices.js";
 
 test("isRemotePhoneMic detects phone and continuity inputs", () => {
@@ -34,5 +35,22 @@ test("getAudioConstraints uses exact device id when requested", () => {
       echoCancellation: true,
       noiseSuppression: true,
     },
+  });
+});
+
+test("resolveWebMicDeviceId prefers saved Mac mic over continuity phone", () => {
+  const devices = [
+    { deviceId: "phone", label: "Tanya's iPhone (Continuity)" },
+    { deviceId: "mac", label: "MacBook Pro Microphone" },
+  ];
+
+  assert.deepEqual(resolveWebMicDeviceId(devices, "mac"), {
+    deviceId: "mac",
+    useExact: true,
+  });
+
+  assert.deepEqual(resolveWebMicDeviceId(devices, null), {
+    deviceId: "mac",
+    useExact: false,
   });
 });

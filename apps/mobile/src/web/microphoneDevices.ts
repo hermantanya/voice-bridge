@@ -109,3 +109,63 @@ export function getAudioConstraints(
     },
   };
 }
+
+export function resolveWebMicDeviceId(
+  devices: MicrophoneDevice[],
+  savedDeviceId: string | null,
+): { deviceId: string | null; useExact: boolean } {
+  if (
+    savedDeviceId &&
+    devices.some((device) => device.deviceId === savedDeviceId)
+  ) {
+    return { deviceId: savedDeviceId, useExact: true };
+  }
+
+  return {
+    deviceId: preferBuiltInMic(devices)?.deviceId ?? null,
+    useExact: false,
+  };
+}
+
+export async function acquireWebMicrophoneStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone is not available in this browser.");
+  }
+
+  let devices = await enumerateMicrophones();
+  const saved = loadSavedMicDeviceId();
+  let { deviceId, useExact } = resolveWebMicDeviceId(devices, saved);
+
+  if (
+    devices.length > 0 &&
+    devices.some((device) => !device.label || /^Microphone \d+$/.test(device.label))
+  ) {
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia(
+        getAudioConstraints(null),
+      );
+      probe.getTracks().forEach((track) => track.stop());
+      devices = await enumerateMicrophones();
+      ({ deviceId, useExact } = resolveWebMicDeviceId(devices, saved));
+    } catch {
+      // Fall through with the current device list.
+    }
+  }
+
+  try {
+    return await navigator.mediaDevices.getUserMedia(
+      getAudioConstraints(deviceId, useExact),
+    );
+  } catch (error) {
+    if (
+      deviceId &&
+      error instanceof DOMException &&
+      (error.name === "NotFoundError" || error.name === "OverconstrainedError")
+    ) {
+      clearSavedMicDeviceId();
+      return navigator.mediaDevices.getUserMedia(getAudioConstraints(null));
+    }
+
+    throw error;
+  }
+}
