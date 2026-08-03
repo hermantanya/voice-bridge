@@ -2,6 +2,16 @@ export type SupportedLanguage = "en" | "he" | "ru";
 
 export const SUPPORTED_LANGUAGES: SupportedLanguage[] = ["en", "he", "ru"];
 
+const LANGUAGE_ALIASES: Record<string, SupportedLanguage> = {
+  en: "en",
+  english: "en",
+  he: "he",
+  hebrew: "he",
+  iw: "he",
+  ru: "ru",
+  russian: "ru",
+};
+
 export function normalizeDetectedLanguage(
   code: string | undefined | null,
 ): SupportedLanguage | null {
@@ -10,11 +20,7 @@ export function normalizeDetectedLanguage(
   }
 
   const normalized = code.trim().toLowerCase().split("-")[0];
-  if (normalized === "en" || normalized === "he" || normalized === "ru") {
-    return normalized;
-  }
-
-  return null;
+  return LANGUAGE_ALIASES[normalized] ?? null;
 }
 
 export function resolveTargetLanguage(code: string | undefined | null): SupportedLanguage {

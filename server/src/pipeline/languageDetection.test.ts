@@ -17,6 +17,13 @@ test("normalizeDetectedLanguage maps supported ISO codes", () => {
   assert.equal(normalizeDetectedLanguage(""), null);
 });
 
+test("normalizeDetectedLanguage maps Whisper language names", () => {
+  assert.equal(normalizeDetectedLanguage("english"), "en");
+  assert.equal(normalizeDetectedLanguage("English"), "en");
+  assert.equal(normalizeDetectedLanguage("hebrew"), "he");
+  assert.equal(normalizeDetectedLanguage("russian"), "ru");
+});
+
 test("resolveTargetLanguage falls back to English", () => {
   assert.equal(resolveTargetLanguage("he"), "he");
   assert.equal(resolveTargetLanguage(undefined), "en");

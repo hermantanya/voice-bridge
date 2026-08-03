@@ -469,9 +469,7 @@ export function registerSocketHandlers(
         closeActivePipeline(room.activeConversation, socket.id);
         emitUsageUpdate(io, code, room);
 
-        room.turnParticipantId = socket.id;
-        room.phase = "speaking";
-        emitTurnState(io, code, room);
+        openTurnFloor(io, code, room);
 
         socket.emit("error", {
           message: error instanceof Error ? error.message : "Translation failed",
