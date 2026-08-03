@@ -64,11 +64,12 @@ const checks = [
     root: serverRoot,
     required: [
       "reconcileParticipantsOnJoin",
+      "reconcileParticipantsFromLive",
       "participants_sync",
       "release_turn",
       "speakerGender",
     ],
-    forbidden: ["syncRoomParticipants"],
+    forbidden: ["syncRoomParticipants", "room.participantIds = liveIds"],
   },
   {
     name: "gender translation prompt extracted and tested",

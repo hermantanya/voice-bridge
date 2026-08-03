@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  reconcileParticipantsFromLive,
   reconcileParticipantsOnJoin,
   removeParticipant,
 } from "./roomParticipants.js";
@@ -51,4 +52,15 @@ test("removeParticipant drops disconnected sockets", () => {
 
   assert.equal(participants, 1);
   assert.deepEqual([...room.participantIds], ["mobile"]);
+});
+
+test("reconcileParticipantsFromLive keeps tracked joiners when fetchSockets is stale", () => {
+  const room = roomWith(["desktop", "mobile"]);
+
+  const participants = reconcileParticipantsFromLive(room, [
+    { id: "mobile" },
+  ]);
+
+  assert.equal(participants, 2);
+  assert.deepEqual([...room.participantIds].sort(), ["desktop", "mobile"]);
 });

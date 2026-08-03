@@ -11,6 +11,7 @@ import {
 } from "./activeConversation.js";
 import { rejectIfAudioLimited, type SocketRateLimits } from "./rateLimit.js";
 import {
+  reconcileParticipantsFromLive,
   reconcileParticipantsOnJoin,
   removeParticipant,
 } from "./roomParticipants.js";
@@ -139,9 +140,7 @@ async function broadcastRoomParticipants(
   room: RoomState,
 ): Promise<number> {
   const socketsInRoom = await io.in(roomCode).fetchSockets();
-  const liveIds = new Set(socketsInRoom.map((socket) => socket.id));
-
-  room.participantIds = liveIds;
+  const participants = reconcileParticipantsFromLive(room, socketsInRoom);
 
   if (
     room.turnParticipantId &&
@@ -151,7 +150,7 @@ async function broadcastRoomParticipants(
     room.phase = "waiting";
   }
 
-  return liveIds.size;
+  return participants;
 }
 
 function openTurnFloor(io: Server, roomCode: string, room: RoomState): void {
