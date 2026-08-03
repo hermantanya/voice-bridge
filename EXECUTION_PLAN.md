@@ -2,19 +2,19 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** August 2026 (v1.2 — Fish + ElevenLabs spike gate)
+**Last updated:** August 2026 (v1.2 shipped — ElevenLabs IVC)
 
 ---
 
 ## Provider decision (August 2026)
 
-| Provider | Spike | Private clone | HE + RU | Free tier for dev |
+| Provider | Spike | Private clone | HE + RU | Production choice |
 |---|---|---|---|---|
-| OpenAI Custom Voices | ❌ 404 (no org access) | — | — | — |
-| **Fish Audio API** | `npm run spike:voice:fish` | ✅ `visibility: private` | ✅ (83 langs) | ✅ `s2.1-pro-free` (fair use) |
-| **ElevenLabs IVC** | `npm run spike:elevenlabs` (planned) | ✅ private | ✅ (v3 + `language_code`) | ❌ cloning needs **Starter $6/mo** |
+| OpenAI Custom Voices | ❌ 404 (no org access) | — | — | Rejected |
+| Fish Audio API | ✅ `npm run spike:voice:fish` | ✅ `visibility: private` | ✅ (83 langs) | Spiked; not chosen |
+| **ElevenLabs IVC** | ✅ `npm run spike:voice:elevenlabs` | ✅ private | ✅ (v3 + `language_code`) | **✅ Shipped in v1.2** |
 
-**Gate:** Run **both** Fish and ElevenLabs spikes with the same ~30s sample. Pick the provider that sounds most like you in HE and RU with acceptable latency. Default build target until then: **ElevenLabs** (already in plan); **Fish** if quality wins and free API tier holds for 5 testers.
+**Decision:** ElevenLabs IVC for cloned-voice TTS. OpenAI remains on Whisper STT + GPT-4o-mini translation only.
 
 ## Current state
 
@@ -22,7 +22,8 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 |---|---|
 | **v1.0** — EN ↔ HE, 2-person push-to-talk | ✅ Shipped |
 | **v1.1** — + RU, transcripts, speaking-time stats, web mic picker | ✅ Shipped |
-| **v1.2** — Real voice on translated speech | 🔄 In progress |
+| **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
+| **v1.3** — Auto-detect spoken language | 📋 Next |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -34,22 +35,22 @@ We planned **OpenAI Custom Voices** for Track 1 (real voice). Spike result:
 
 | Test | Result |
 |---|---|
-| Preset OpenAI TTS (`nova`) | ✅ Works |
+| Preset OpenAI TTS (`nova`) | ✅ Works (still used as fallback) |
 | OpenAI Custom Voices API | ❌ 404 — org lacks access (enterprise/eligibility) |
 
-**Decision:** Keep OpenAI for **STT + translation** only. Replace **TTS** with a **cloned-voice provider** — **ElevenLabs IVC** (planned default) or **Fish Audio** (API alternative; see spike gate below).
+**Decision:** Keep OpenAI for **STT + translation** only. Replace **TTS** with **ElevenLabs IVC**.
 
 **Rejected alternatives:**
 
 | Provider | Why not (for now) |
 |---|---|
 | xAI Custom Voices | No official Hebrew in TTS list; US geo restriction; programmatic create = Enterprise |
-| Cartesia | Evaluated; ElevenLabs/Fish under active spike |
+| Fish Audio | Spiked; ElevenLabs chosen for quality + ecosystem on Starter tier |
 | OpenAI Custom Voices | Blocked on account access (404) |
 
 ---
 
-## v1.2 target architecture
+## v1.2 architecture (shipped)
 
 ```
 Phone/Browser                 Railway Server                    Providers
@@ -59,20 +60,20 @@ Phone/Browser                 Railway Server                    Providers
      │  join_room (+ voice_id)      │  GPT-4o-mini translate ────►│ OpenAI
      │  audio_chunk                 │  ElevenLabs TTS (speaker's   │
      │◄─────────────────────────────┤   cloned voice_id) ─────────►│ ElevenLabs
-     │  translation_result + audio  │                              │
+     │  translation_result + audio  │  (fallback: OpenAI nova)     │
 ```
 
-**Enrollment (once per device, v1.2):**
+**Enrollment (once per device):**
 
 ```
-Settings → record ~30–45s sample (user's language)
+Settings → Set up my voice → record script (30s min, ~45–60s target)
         → POST /api/voices/enroll
         → ElevenLabs IVC API → voice_id
         → save voice_id locally (AsyncStorage)
         → every join_room sends voice_id
 ```
 
-**Runtime rule:** When user A speaks, the **listener** hears translation synthesized with **A's** `voice_id` (not a preset persona).
+**Runtime rule:** When user A speaks, the **listener** hears translation synthesized with **A's** `voice_id` (not a preset persona). Unenrolled users fall back to OpenAI `nova`.
 
 ---
 
@@ -84,88 +85,40 @@ Settings → record ~30–45s sample (user's language)
 - [x] Confirm preset TTS works
 - [x] Confirm Custom Voices API unavailable → pivot decision
 
-### Phase 1 — TTS provider spike (gate)
+### Phase 1 — TTS provider spike (done)
 
-**Goal:** Validate quality and latency before building enrollment UI. Run **Fish** and **ElevenLabs** with the **same** voice sample; pick a winner.
+- [x] Fish Audio spike — `npm run spike:voice:fish`
+- [x] ElevenLabs spike — `npm run spike:voice:elevenlabs`
+- [x] **Chosen provider: ElevenLabs IVC**
 
-#### 1a — Fish Audio spike
+### Phase 2 — Server (done)
 
-- [ ] Sign up at [fish.audio](https://fish.audio) → create API key
-- [ ] Add `FISH_API_KEY` to `server/.env`
-- [ ] Run access check:
+- [x] `server/src/voices/elevenlabs.ts` — IVC clone, TTS, delete
+- [x] `server/src/pipeline/tts.ts` — ElevenLabs with `voice_id` + target language; `nova` fallback
+- [x] `runTranslationPipeline()` accepts optional `voiceId`
+- [x] Handler uses speaker's `socket.data.elevenlabsVoiceId`
+- [x] `POST /api/voices/enroll` + `DELETE /api/voices/:voiceId`
+- [x] `join_room` payload: optional `elevenlabsVoiceId`
+- [x] Gender-aware translation prompts (`genderInstruction.ts`)
+- [x] `ELEVENLABS_API_KEY` in `.env.example`
+- [x] Rate-limit enroll endpoint (`RATE_LIMIT_ENROLL_PER_HOUR`)
 
-```bash
-cd server
-npm run spike:voice:fish
-```
+### Phase 3 — Mobile (done)
 
-- [ ] Full test (~15–30s sample, wav/mp3/m4a/webm):
+- [x] Settings → **Set up my voice** + `VoiceSetupScreen`
+- [x] Gender-aware enrollment scripts (HE female/male)
+- [x] 30s minimum duration; stop anytime; preview after create
+- [x] Persist `elevenlabsVoiceId` in AsyncStorage
+- [x] Pass `voice_id` on every `join_room`
+- [x] Home badge: language · gender · voice status
+- [x] Web enrollment respects saved Mac microphone (not Continuity phone)
 
-```bash
-npm run spike:voice:fish -- --sample ./tmp/voice-sample.wav
-```
+### Phase 4 — Deploy + docs (done)
 
-- [ ] Listen to `server/tmp/voice-spike-fish/fish-clone-en.mp3`, `-he.mp3`, `-ru.mp3`
-- [ ] Note: private clone (`visibility: private`), no consent script; uses `s2.1-pro-free`
-- [ ] Re-use existing clone: `--reference YOUR_VOICE_ID` (skip re-create)
-
-**Fish free-tier notes:** Web app free plan = 3 **public** slots only (~7 min/mo). **Voice Bridge uses the API**, not web slots — private models via `POST /model`. Subject to fair-use on `s2.1-pro-free`.
-
-#### 1b — ElevenLabs spike
-
-- [ ] Sign up ElevenLabs **Starter** (~$6/mo) — IVC not on official Free plan
-- [ ] Add `ELEVENLABS_API_KEY` to `server/.env` and Railway
-- [ ] Add `server/scripts/spike-elevenlabs-voice.ts` (or extend spike script):
-  - Clone ~30–45s sample via IVC API → `voice_id`
-  - TTS test phrases in **Hebrew**, **Russian**, **English**
-  - Hebrew: use **Eleven v3** + `language_code: "he"`
-- [ ] Document spike results (pass/fail, latency, quality notes)
-
-#### 1c — Pick provider
-
-| Criterion | Fish wins if… | ElevenLabs wins if… |
-|---|---|---|
-| Sound quality (HE/RU) | Blind test prefers Fish samples | Blind test prefers ElevenLabs |
-| Cost (5 testers) | Free API tier sufficient | Worth $6/mo for slots + quality |
-| Latency | ≤ current ~3–6s turn budget | Same |
-| Ops | Happy with Fish fair-use / billing | Need ElevenLabs ecosystem |
-
-Update this file + README with chosen provider before Phase 2.
-
-**Do not proceed to Phase 2 if both spikes fail.**
-
-### Phase 2 — Server
-
-*(Adjust module names if Fish wins spike: `fishAudio.ts` instead of `elevenlabs.ts`.)*
-
-- [ ] Add TTS client — `server/src/voices/elevenlabs.ts` **or** `fishAudio.ts` (Fish helpers already stubbed)
-- [ ] Replace `server/src/pipeline/tts.ts` — ElevenLabs TTS with `voice_id` + target language
-- [ ] Extend `runTranslationPipeline()` to accept optional `voiceId`
-- [ ] Wire handler: on translate, use **speaker's** `socket.data.elevenlabsVoiceId`
-- [ ] New `POST /api/voices/enroll` — accept audio, call IVC, return `{ voiceId }`
-- [ ] Extend `join_room` payload: optional `elevenlabsVoiceId`
-- [ ] Fallback: preset/default voice if participant has not enrolled
-- [ ] Update `server/.env.example` with `ELEVENLABS_API_KEY`
-- [ ] Rate-limit enroll endpoint (protect voice slots + ops quota)
-- [ ] Deprecate or archive OpenAI voice helpers (`openaiVoices.ts`) — keep spike script for reference
-
-### Phase 3 — Mobile
-
-- [ ] Settings → **Set up my voice** flow
-  - 3–4 short prompts in user's language (~30–45s total)
-  - Record → upload → preview TTS
-  - Re-enroll option
-  - Disclosure: AI-generated speech in user's voice likeness
-- [ ] Persist `elevenlabsVoiceId` in **AsyncStorage** (device-local, v1.2 scope)
-- [ ] Pass stored `voice_id` on every `join_room`
-- [ ] Show enrollment status on home/settings (e.g. "Voice ready" / "Set up voice")
-
-### Phase 4 — Deploy + docs
-
-- [ ] Push to GitHub, deploy Railway with `ELEVENLABS_API_KEY`
-- [ ] E2E: two devices, both enrolled, EN ↔ HE ↔ RU with real voices
-- [ ] Update README architecture, roadmap, env vars
-- [ ] Mark v1.2 done in this file
+- [x] Push to GitHub, deploy Railway with `ELEVENLABS_API_KEY`
+- [x] E2E: two devices, EN ↔ HE ↔ RU with cloned voices
+- [x] Update README architecture, roadmap, env vars
+- [x] Mark v1.2 done in this file
 
 ---
 
@@ -173,8 +126,8 @@ Update this file + README with chosen provider before Phase 2.
 
 | Topic | Decision |
 |---|---|
-| Sample length | **~30–45 seconds** (ElevenLabs has no hard minimum; 30s can work; 1–2 min is ideal quality, not required) |
-| Sample language | User's own language (HE / RU / EN) — no fixed English consent script |
+| Sample length | **30 seconds minimum**; scripts target ~45–60s read time |
+| Sample language | User's own language (HE / RU / EN) — gender-aware Hebrew scripts |
 | Frequency | **Once** — `voice_id` persists on ElevenLabs until deleted |
 | Cross-device | **Not in v1.2** — device-local storage only; signed-in profiles in **v1.4** |
 | Raw audio retention | Optional locally; **`voice_id` is the durable asset** |
@@ -185,10 +138,11 @@ Update this file + README with chosen provider before Phase 2.
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | Server | Whisper + GPT translate (unchanged) |
-| `ELEVENLABS_API_KEY` | Server | IVC enroll + TTS (if ElevenLabs wins spike) |
-| `FISH_API_KEY` | Server | Private clone + TTS (if Fish wins spike) |
-| `EXPO_PUBLIC_SERVER_URL` | Mobile | Backend URL (unchanged) |
+| `OPENAI_API_KEY` | Server | Whisper + GPT translate |
+| `ELEVENLABS_API_KEY` | Server | IVC enroll + TTS |
+| `FISH_API_KEY` | Server | Optional — Fish spike only (not production) |
+| `RATE_LIMIT_ENROLL_PER_HOUR` | Server | Protect voice slots (default 10) |
+| `EXPO_PUBLIC_SERVER_URL` | Mobile | Backend URL |
 
 ---
 
@@ -226,25 +180,30 @@ Update this file + README with chosen provider before Phase 2.
 
 ---
 
-## Files touched (expected)
+## Files shipped (v1.2)
 
 ```
 server/
-  scripts/spike-custom-voice-fish.ts  (Fish spike — ready)
-  scripts/spike-elevenlabs-voice.ts   (planned)
-  src/voices/fishAudio.ts             (Fish API helpers — ready)
-  src/voices/elevenlabs.ts            (planned, if ElevenLabs wins)
-  src/pipeline/tts.ts                 (replace OpenAI TTS)
-  src/pipeline/index.ts               (voiceId param)
-  src/ws/handler.ts                   (join_room + speaker voice_id)
-  src/routes/voices.ts                (new enroll endpoint)
+  scripts/spike-custom-voice-fish.ts
+  scripts/spike-custom-voice-elevenlabs.ts
+  src/voices/elevenlabs.ts
+  src/voices/enrollment.ts
+  src/voices/fishAudio.ts              (spike helper, not production)
+  src/pipeline/tts.ts
+  src/pipeline/genderInstruction.ts
+  src/ws/handler.ts
+  src/routes/voices.ts
   .env.example
 
 apps/mobile/
-  src/screens/SettingsScreen.tsx      (enrollment UI)
-  src/screens/VoiceSetupScreen.tsx    (optional new screen)
-  src/hooks/useVoiceProfile.ts        (new — AsyncStorage)
-  src/hooks/useSocket.ts              (pass voice_id on join)
+  src/screens/SettingsScreen.tsx
+  src/screens/VoiceSetupScreen.tsx
+  src/hooks/useVoiceProfile.ts
+  src/hooks/useEnrollmentRecording.ts
+  src/hooks/useSocket.ts
+  src/api/enrollVoice.ts
+  src/web/microphoneDevices.ts         (acquireWebMicrophoneStream)
+  src/session/enrollmentPrompts.ts
 ```
 
 ---
@@ -255,3 +214,4 @@ apps/mobile/
 - Long-term vision: [VISION.md](VISION.md)
 - OpenAI spike (historical): `npm run spike:voice` in `server/`
 - Fish spike: `npm run spike:voice:fish` in `server/`
+- ElevenLabs spike: `npm run spike:voice:elevenlabs` in `server/`

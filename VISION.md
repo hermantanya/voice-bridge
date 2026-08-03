@@ -81,7 +81,7 @@ This parallels multimodal AI research (speech + behavior + environment) but is a
 
 | Horizon | Product |
 |---|---|
-| v1 | Walkie-talkie interpreter (2 people; EN, HE, RU in v1.1) |
+| v1 | Walkie-talkie interpreter (2 people; EN, HE, RU in v1.1; cloned voice + gender-aware translation in v1.2) |
 | v2 | Group channel with filters and mute |
 | v3 | Dinner-table interpretation layer |
 | v4+ | Shared-mic diarization, proximity experiments |
