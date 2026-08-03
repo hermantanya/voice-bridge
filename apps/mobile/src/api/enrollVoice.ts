@@ -9,6 +9,49 @@ export type VoiceEnrollmentResult = {
   previewAudioFormat: string;
 };
 
+export async function previewEnrolledVoice(params: {
+  voiceId: string;
+  language: LanguageCode;
+  gender: SpeakerGender;
+}): Promise<VoiceEnrollmentResult> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${SERVER_URL}/api/voices/preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        voiceId: params.voiceId,
+        language: params.language,
+        gender: params.gender,
+      }),
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Could not reach server at ${SERVER_URL}: ${error.message}`
+        : "Could not reach server",
+    );
+  }
+
+  const body = await readApiJson<
+    VoiceEnrollmentResult & { error?: string }
+  >(response);
+
+  if (!response.ok) {
+    throw new Error(body.error ?? `Voice preview failed (${response.status})`);
+  }
+
+  if (!body.previewAudioBase64) {
+    throw new Error("Voice preview did not return audio");
+  }
+
+  return body;
+}
+
 export async function enrollVoice(params: {
   audioBase64: string;
   format: string;

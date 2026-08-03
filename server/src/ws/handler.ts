@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 
 import { runTranslationPipeline } from "../pipeline/index.js";
+import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import {
   closeActivePipeline,
   createActiveConversationTracker,
@@ -20,6 +21,7 @@ type JoinRoomPayload = {
   roomCode: string;
   speakLang?: string;
   hearLang?: string;
+  speakLangOverride?: string;
   speakerGender?: "female" | "male";
   elevenlabsVoiceId?: string;
 };
@@ -175,8 +177,14 @@ export function registerSocketHandlers(
     console.log(`client connected: ${socket.id}`);
 
     socket.on("join_room", async (payload: JoinRoomPayload) => {
-      const { roomCode, speakLang, hearLang, speakerGender, elevenlabsVoiceId } =
-        payload;
+      const {
+        roomCode,
+        speakLang,
+        hearLang,
+        speakLangOverride,
+        speakerGender,
+        elevenlabsVoiceId,
+      } = payload;
 
       if (!roomCode?.trim()) {
         socket.emit("error", { message: "roomCode is required" });
@@ -184,7 +192,12 @@ export function registerSocketHandlers(
       }
 
       const code = roomCode.trim().toUpperCase();
-      const myLang = speakLang ?? hearLang ?? "en";
+      const translateToLang = resolveTargetLanguage(
+        hearLang ?? speakLang ?? "en",
+      );
+      const resolvedSpeakOverride = speakLangOverride
+        ? resolveTargetLanguage(speakLangOverride)
+        : undefined;
 
       socket.join(code);
 
@@ -202,8 +215,12 @@ export function registerSocketHandlers(
       );
 
       socket.data.roomCode = code;
-      socket.data.speakLang = myLang;
-      socket.data.hearLang = myLang;
+      socket.data.hearLang = translateToLang;
+      if (resolvedSpeakOverride) {
+        socket.data.speakLangOverride = resolvedSpeakOverride;
+      } else {
+        delete socket.data.speakLangOverride;
+      }
       if (speakerGender === "female" || speakerGender === "male") {
         socket.data.speakerGender = speakerGender;
       }
@@ -223,15 +240,17 @@ export function registerSocketHandlers(
       }
 
       const partnerSocket = socketsInRoom.find((s) => s.id !== socket.id);
-      const partnerLang = partnerSocket?.data.speakLang as string | undefined;
+      const partnerTranslateTo = partnerSocket?.data.hearLang as
+        | string
+        | undefined;
       const turnState = getRoomTurnState(room);
 
       socket.emit("joined_room", {
         roomCode: code,
         participantId: socket.id,
         participants,
-        myLang,
-        partnerLang,
+        myLang: translateToLang,
+        partnerLang: partnerTranslateTo,
         turnState,
         ...buildUsagePayload(room),
       });
@@ -239,7 +258,7 @@ export function registerSocketHandlers(
       socket.to(code).emit("participant_joined", {
         participantId: socket.id,
         participants,
-        myLang,
+        myLang: translateToLang,
         turnState,
         ...buildUsagePayload(room),
       });
@@ -249,7 +268,7 @@ export function registerSocketHandlers(
       }
 
       console.log(
-        `socket ${socket.id} joined room ${code} (${participants} participants, lang=${myLang}, turn=${room.turnParticipantId})`,
+        `socket ${socket.id} joined room ${code} (${participants} participants, translateTo=${translateToLang}, turn=${room.turnParticipantId})`,
       );
 
       void (async () => {
@@ -379,14 +398,11 @@ export function registerSocketHandlers(
 
       try {
         const audio = Buffer.from(payload.audioBase64, "base64");
-        const sourceLang =
-          payload.sourceLang ?? (socket.data.speakLang as string) ?? "en";
-
         const socketsInRoom = await io.in(code).fetchSockets();
         const listener = socketsInRoom.find((s) => s.id !== socket.id);
         const targetLang = listener
-          ? ((listener.data.speakLang as string) ?? "en")
-          : ((payload.targetLang as string) ?? "en");
+          ? resolveTargetLanguage(listener.data.hearLang as string | undefined)
+          : resolveTargetLanguage(payload.targetLang);
 
         const speakerGender = socket.data.speakerGender as
           | "female"
@@ -397,15 +413,26 @@ export function registerSocketHandlers(
           | "male"
           | undefined;
 
+        const sourceLangOverride = socket.data.speakLangOverride as
+          | string
+          | undefined;
+
+        const speakerVoiceId = socket.data.elevenlabsVoiceId as string | undefined;
+
         const result = await runTranslationPipeline({
           audio,
-          sourceLang,
           targetLang,
           format: payload.format ?? "webm",
+          sourceLangOverride,
           speakerGender,
           addresseeGender,
-          voiceId: socket.data.elevenlabsVoiceId as string | undefined,
+          voiceId: speakerVoiceId,
         });
+
+        const usedClonedVoice =
+          !result.skippedTts &&
+          Boolean(speakerVoiceId?.trim()) &&
+          result.audio.length > 0;
 
         const turnActiveMs = speechMs + result.latencyMs;
         closeActivePipeline(room.activeConversation, socket.id);
@@ -422,6 +449,8 @@ export function registerSocketHandlers(
           audioBase64: result.audio.toString("base64"),
           audioFormat: result.audioFormat,
           latencyMs: result.latencyMs,
+          skippedTts: result.skippedTts ?? false,
+          usedClonedVoice,
           turnActiveMs,
           ...usage,
         };

@@ -7,6 +7,7 @@ import {
   enrollmentSampleFilename,
   MIN_ENROLLMENT_DURATION_MS,
   validateVoiceEnrollmentRequest,
+  validateVoicePreviewRequest,
 } from "./enrollment.js";
 
 test("validateVoiceEnrollmentRequest requires audio and minimum duration", () => {
@@ -47,4 +48,33 @@ test("enrollment helpers build filenames and preview text", () => {
   assert.equal(enrollmentSampleFilename("m4a"), "voice-bridge-enrollment.m4a");
   assert.match(buildVoiceCloneName("ru"), /^Voice Bridge RU /);
   assert.match(enrollmentPreviewText("he"), /Voice Bridge/);
+});
+
+test("validateVoicePreviewRequest requires voiceId and language", () => {
+  assert.deepEqual(validateVoicePreviewRequest({}), {
+    ok: false,
+    error: "voiceId is required",
+  });
+
+  assert.deepEqual(
+    validateVoicePreviewRequest({ voiceId: "voice-123", language: "fr" }),
+    {
+      ok: false,
+      error: "language must be en, he, or ru",
+    },
+  );
+
+  assert.deepEqual(
+    validateVoicePreviewRequest({
+      voiceId: "voice-123",
+      language: "en",
+      gender: "male",
+    }),
+    {
+      ok: true,
+      voiceId: "voice-123",
+      language: "en",
+      gender: "male",
+    },
+  );
 });

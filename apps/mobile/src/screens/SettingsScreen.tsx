@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   View,
 } from "react-native";
 
+import { previewEnrolledVoice } from "../api/enrollVoice";
 import {
   LANGUAGES,
   SPEAKER_GENDERS,
@@ -14,6 +16,7 @@ import {
   type SpeakerGender,
 } from "../config";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
+import { playVoicePreviewAudio } from "../session/voicePreviewPlayback";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
 
 type SettingsScreenProps = {
@@ -22,6 +25,7 @@ type SettingsScreenProps = {
   speakerGender: SpeakerGender;
   onSpeakerGenderChange: (gender: SpeakerGender) => void;
   voiceStatus: VoiceProfileStatus;
+  elevenlabsVoiceId?: string | null;
   onOpenVoiceSetup: () => void;
   onRemoveVoice: () => Promise<void>;
   onBack: () => void;
@@ -38,6 +42,7 @@ export function SettingsScreen({
   speakerGender,
   onSpeakerGenderChange,
   voiceStatus,
+  elevenlabsVoiceId,
   onOpenVoiceSetup,
   onRemoveVoice,
   onBack,
@@ -47,6 +52,14 @@ export function SettingsScreen({
   onMicrophoneChange,
   onRefreshMicrophones,
 }: SettingsScreenProps) {
+  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPreviewText(null);
+    setPreviewError(null);
+  }, [elevenlabsVoiceId, myLang, speakerGender]);
   useEffect(() => {
     if (showMicrophoneSettings) {
       onRefreshMicrophones?.(true);
@@ -55,10 +68,9 @@ export function SettingsScreen({
 
   const content = (
     <>
-      <Text style={styles.title}>My language</Text>
+      <Text style={styles.title}>Translate to</Text>
       <Text style={styles.subtitle}>
-        Pick the language you speak. You'll hear the other person in this same
-        language.
+        Translations you receive will be in this language.
       </Text>
 
       <View style={styles.card}>
@@ -137,14 +149,62 @@ export function SettingsScreen({
         </Pressable>
 
         {voiceStatus === "custom" ? (
-          <Pressable
-            style={styles.removeButton}
-            onPress={() => {
-              void onRemoveVoice();
-            }}
-          >
-            <Text style={styles.removeButtonText}>Remove my voice</Text>
-          </Pressable>
+          <>
+            <Pressable
+              style={styles.secondaryButton}
+              disabled={previewLoading || !elevenlabsVoiceId}
+              onPress={() => {
+                if (!elevenlabsVoiceId) {
+                  return;
+                }
+
+                void (async () => {
+                  try {
+                    setPreviewLoading(true);
+                    setPreviewError(null);
+                    const result = await previewEnrolledVoice({
+                      voiceId: elevenlabsVoiceId,
+                      language: myLang,
+                      gender: speakerGender,
+                    });
+                    setPreviewText(result.previewText);
+                    await playVoicePreviewAudio(result.previewAudioBase64);
+                  } catch (error) {
+                    setPreviewError(
+                      error instanceof Error
+                        ? error.message
+                        : "Could not play voice preview",
+                    );
+                  } finally {
+                    setPreviewLoading(false);
+                  }
+                })();
+              }}
+            >
+              {previewLoading ? (
+                <View style={styles.previewLoadingRow}>
+                  <ActivityIndicator color="#93c5fd" size="small" />
+                  <Text style={styles.secondaryButtonText}>Loading preview…</Text>
+                </View>
+              ) : (
+                <Text style={styles.secondaryButtonText}>Play voice preview</Text>
+              )}
+            </Pressable>
+            {previewText ? (
+              <Text style={styles.previewText}>{previewText}</Text>
+            ) : null}
+            {previewError ? (
+              <Text style={styles.previewError}>{previewError}</Text>
+            ) : null}
+            <Pressable
+              style={styles.removeButton}
+              onPress={() => {
+                void onRemoveVoice();
+              }}
+            >
+              <Text style={styles.removeButtonText}>Remove my voice</Text>
+            </Pressable>
+          </>
         ) : null}
       </View>
 
@@ -312,6 +372,34 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  secondaryButton: {
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  secondaryButtonText: {
+    color: "#93c5fd",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  previewLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  previewText: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  previewError: {
+    color: "#fca5a5",
+    fontSize: 14,
+    lineHeight: 20,
   },
   removeButton: {
     paddingVertical: 10,

@@ -5,6 +5,7 @@ import {
   enrollmentPreviewText,
   enrollmentSampleFilename,
   validateVoiceEnrollmentRequest,
+  validateVoicePreviewRequest,
   type VoiceEnrollmentRequest,
 } from "../voices/enrollment.js";
 import {
@@ -75,6 +76,45 @@ voicesRouter.post("/enroll", async (req, res) => {
     console.error("voice enroll error:", error);
     res.status(500).json({
       error: error instanceof Error ? error.message : "Voice enrollment failed",
+    });
+  }
+});
+
+voicesRouter.post("/preview", async (req, res) => {
+  try {
+    const validated = validateVoicePreviewRequest(req.body);
+
+    if (!validated.ok) {
+      res.status(400).json({ error: validated.error });
+      return;
+    }
+
+    const previewText = enrollmentPreviewText(
+      validated.language,
+      validated.gender,
+    );
+    const modelId = elevenLabsModelForLanguage(validated.language);
+    const previewAudio = await synthesizeElevenLabsSpeech({
+      text: previewText,
+      voiceId: validated.voiceId,
+      modelId,
+      languageCode: elevenLabsLanguageCodeForTts(
+        validated.language,
+        modelId,
+      ),
+      voiceSettings: ELEVENLABS_IVC_TTS_DEFAULTS.voiceSettings,
+    });
+
+    res.json({
+      voiceId: validated.voiceId,
+      previewText,
+      previewAudioBase64: previewAudio.toString("base64"),
+      previewAudioFormat: "mp3",
+    });
+  } catch (error) {
+    console.error("voice preview error:", error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Voice preview failed",
     });
   }
 });

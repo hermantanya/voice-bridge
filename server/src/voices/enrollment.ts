@@ -101,3 +101,40 @@ export function buildVoiceCloneName(language: EnrollmentLanguage): string {
   const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
   return `Voice Bridge ${language.toUpperCase()} ${stamp}`;
 }
+
+export type VoicePreviewRequest = {
+  voiceId?: string;
+  language?: string;
+  gender?: string;
+};
+
+export function validateVoicePreviewRequest(payload: VoicePreviewRequest):
+  | {
+      ok: true;
+      voiceId: string;
+      language: EnrollmentLanguage;
+      gender?: EnrollmentGender;
+    }
+  | { ok: false; error: string } {
+  const voiceId = payload.voiceId?.trim();
+  if (!voiceId) {
+    return { ok: false, error: "voiceId is required" };
+  }
+
+  const language = payload.language;
+  if (language !== "en" && language !== "he" && language !== "ru") {
+    return { ok: false, error: "language must be en, he, or ru" };
+  }
+
+  const gender =
+    payload.gender === "female" || payload.gender === "male"
+      ? payload.gender
+      : undefined;
+
+  return {
+    ok: true,
+    voiceId,
+    language,
+    gender,
+  };
+}

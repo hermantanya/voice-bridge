@@ -12,11 +12,12 @@ import {
 import { SpeakingTimeStat } from "../components/SpeakingTimeStat";
 import { TranscriptPanel } from "../components/TranscriptPanel";
 import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
-import type { TranscriptEntry } from "../hooks/useSocket";
+import type { TranscriptEntry, TranslationResult } from "../hooks/useSocket";
 import {
   canStartTalking,
   getTurnLabel,
 } from "../session/sessionScreenState";
+import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { formatSessionDuration } from "../utils/timeFormat";
 
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -25,6 +26,9 @@ type SessionScreenProps = {
   roomCode: string;
   myLang: LanguageCode;
   partnerLang: LanguageCode | null;
+  voiceStatus: VoiceProfileStatus;
+  lastReceived: TranslationResult | null;
+  loadingVoiceProfile?: boolean;
   status: "connecting" | "connected" | "disconnected" | "error";
   participants: number;
   participantId: string | null;
@@ -74,6 +78,9 @@ export function SessionScreen({
   roomCode,
   myLang,
   partnerLang,
+  voiceStatus,
+  lastReceived,
+  loadingVoiceProfile = false,
   status,
   participants,
   participantId,
@@ -136,6 +143,19 @@ export function SessionScreen({
       return "#60a5fa";
     }
     return "#64748b";
+  })();
+
+  const lastPlaybackLabel = (() => {
+    if (!lastReceived) {
+      return null;
+    }
+    if (lastReceived.skippedTts) {
+      return "Last heard: same language (transcript only)";
+    }
+    if (lastReceived.usedClonedVoice) {
+      return "Last heard: partner's cloned voice";
+    }
+    return "Last heard: preset voice";
   })();
 
   useEffect(() => {
@@ -383,9 +403,16 @@ export function SessionScreen({
           </Text>
         </View>
         <Text style={styles.compactMeta}>
-          You: {languageLabel(myLang)}
+          Translate to: {languageLabel(myLang)}
           {partnerLang ? ` · Partner: ${languageLabel(partnerLang)}` : ""}
         </Text>
+        <Text style={styles.compactMeta}>
+          Your voice: {voiceProfileLabel(voiceStatus)}
+          {loadingVoiceProfile ? " (loading…)" : ""}
+        </Text>
+        {lastPlaybackLabel ? (
+          <Text style={styles.compactMeta}>{lastPlaybackLabel}</Text>
+        ) : null}
       </View>
 
       <View style={[styles.turnCard, { borderColor: turnColor }]}>
@@ -402,7 +429,7 @@ export function SessionScreen({
         </Text>
       ) : isMyTurn || isOpenTurn ? (
         <Text style={styles.hint} numberOfLines={2}>
-          Hold to talk in {languageLabel(myLang)}.
+          Hold to talk.
           {Platform.OS === "web"
             ? " Pick Mac mic in Language settings."
             : ""}

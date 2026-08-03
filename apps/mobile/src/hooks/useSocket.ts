@@ -22,6 +22,8 @@ export type TranslationResult = {
   audioBase64: string;
   audioFormat: string;
   latencyMs: number;
+  usedClonedVoice?: boolean;
+  skippedTts?: boolean;
   turnActiveMs?: number;
   totalActiveConversationMs?: number;
   myBillableMs?: number;
@@ -129,6 +131,24 @@ export function useSocket({
   const myLangRef = useRef(myLang);
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
+  const connectedRef = useRef(false);
+
+  const emitJoinRoom = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected || !roomCodeRef.current) {
+      return;
+    }
+
+    socket.emit(
+      "join_room",
+      buildJoinRoomPayload({
+        roomCode: roomCodeRef.current,
+        myLang: myLangRef.current,
+        speakerGender: speakerGenderRef.current,
+        elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
+      }),
+    );
+  }, []);
   const roomCodeRef = useRef(roomCode);
   const turnStateRef = useRef<TurnState>({
     turnParticipantId: null,
@@ -437,12 +457,11 @@ export function useSocket({
       socket.emit("audio_chunk", {
         audioBase64,
         format,
-        sourceLang: myLang,
         recordingDurationMs: pendingSpeechMsRef.current,
         recordingStartedAt,
       });
     },
-    [myLang],
+    [],
   );
 
   useEffect(() => {
@@ -462,19 +481,13 @@ export function useSocket({
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      connectedRef.current = true;
       setStatus("connected");
-      socket.emit(
-        "join_room",
-        buildJoinRoomPayload({
-          roomCode: roomCodeRef.current,
-          myLang: myLangRef.current,
-          speakerGender: speakerGenderRef.current,
-          elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
-        }),
-      );
+      emitJoinRoom();
     });
 
     socket.on("disconnect", () => {
+      connectedRef.current = false;
       setStatus("disconnected");
     });
 
@@ -585,6 +598,7 @@ export function useSocket({
     });
 
     return () => {
+      connectedRef.current = false;
       socket.disconnect();
       socketRef.current = null;
     };
@@ -593,11 +607,16 @@ export function useSocket({
     applyTurnUsage,
     applyUsagePayload,
     disconnect,
+    emitJoinRoom,
     ensureSessionStartedLocally,
     enabled,
     resetTurnState,
     roomCode,
   ]);
+
+  useEffect(() => {
+    emitJoinRoom();
+  }, [emitJoinRoom, elevenlabsVoiceId, myLang, speakerGender]);
 
   return {
     status,

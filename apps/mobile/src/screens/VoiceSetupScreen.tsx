@@ -1,4 +1,3 @@
-import { Audio } from "expo-av";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,8 +10,9 @@ import {
 } from "react-native";
 
 import { enrollVoice } from "../api/enrollVoice";
-import type { LanguageCode, SpeakerGender } from "../config";
+import { LANGUAGES, type LanguageCode, type SpeakerGender } from "../config";
 import { useEnrollmentRecording } from "../hooks/useEnrollmentRecording";
+import { playVoicePreviewAudio } from "../session/voicePreviewPlayback";
 import {
   enrollmentDurationHint,
   estimatedEnrollmentReadSeconds,
@@ -39,27 +39,7 @@ type SetupPhase =
   | "error";
 
 async function playPreviewAudio(audioBase64: string) {
-  if (Platform.OS === "web") {
-    const audio = new window.Audio(`data:audio/mp3;base64,${audioBase64}`);
-    await audio.play();
-    return;
-  }
-
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
-    playsInSilentModeIOS: true,
-  });
-
-  const { sound } = await Audio.Sound.createAsync(
-    { uri: `data:audio/mp3;base64,${audioBase64}` },
-    { shouldPlay: true },
-  );
-
-  sound.setOnPlaybackStatusUpdate((status) => {
-    if (status.isLoaded && status.didJustFinish) {
-      void sound.unloadAsync();
-    }
-  });
+  await playVoicePreviewAudio(audioBase64);
 }
 
 export function VoiceSetupScreen({
@@ -69,13 +49,14 @@ export function VoiceSetupScreen({
   onComplete,
   onBack,
 }: VoiceSetupScreenProps) {
+  const [scriptLang, setScriptLang] = useState<LanguageCode>(myLang);
   const prompt = useMemo(
-    () => getEnrollmentPrompt(myLang, speakerGender),
-    [myLang, speakerGender],
+    () => getEnrollmentPrompt(scriptLang, speakerGender),
+    [scriptLang, speakerGender],
   );
   const estimatedReadSeconds = useMemo(
-    () => estimatedEnrollmentReadSeconds(myLang, speakerGender),
-    [myLang, speakerGender],
+    () => estimatedEnrollmentReadSeconds(scriptLang, speakerGender),
+    [scriptLang, speakerGender],
   );
   const recorder = useEnrollmentRecording();
 
@@ -151,7 +132,7 @@ export function VoiceSetupScreen({
       const result = await enrollVoice({
         audioBase64: pendingRecording.audioBase64,
         format: pendingRecording.format,
-        language: myLang,
+        language: scriptLang,
         gender: speakerGender,
         durationMs: pendingRecording.durationMs,
         replaceVoiceId: existingVoiceId,
@@ -168,7 +149,7 @@ export function VoiceSetupScreen({
         error instanceof Error ? error.message : "Voice enrollment failed",
       );
     }
-  }, [existingVoiceId, myLang, pendingRecording, speakerGender]);
+  }, [existingVoiceId, pendingRecording, scriptLang, speakerGender]);
 
   const handleSave = useCallback(async () => {
     if (!enrolledVoiceId) {
@@ -214,6 +195,33 @@ export function VoiceSetupScreen({
         {MIN_ENROLLMENT_DURATION_MS / 1000} seconds of audio before creating
         your voice clone.
       </Text>
+
+      <Text style={styles.sectionLabel}>Script language</Text>
+      <Text style={styles.sectionHint}>
+        Defaults to your translate-to language. Change this if you want a
+        different script to read.
+      </Text>
+      <View style={styles.langRow}>
+        {LANGUAGES.map((lang) => {
+          const active = lang.code === scriptLang;
+          return (
+            <Pressable
+              key={lang.code}
+              style={[styles.langOption, active && styles.langOptionActive]}
+              onPress={() => setScriptLang(lang.code)}
+            >
+              <Text
+                style={[
+                  styles.langOptionText,
+                  active && styles.langOptionTextActive,
+                ]}
+              >
+                {lang.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{prompt.title}</Text>
@@ -334,6 +342,42 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontSize: 15,
     lineHeight: 22,
+  },
+  sectionLabel: {
+    color: "#e2e8f0",
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  sectionHint: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  langRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  langOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  langOptionActive: {
+    backgroundColor: "#2563eb",
+    borderColor: "#2563eb",
+  },
+  langOptionText: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  langOptionTextActive: {
+    color: "#f8fafc",
   },
   card: {
     backgroundColor: "#1e293b",

@@ -14,7 +14,10 @@ export async function readApiJson<T extends Record<string, unknown>>(
   try {
     return JSON.parse(raw) as T;
   } catch {
-    const snippet = raw.replace(/\s+/g, " ").slice(0, 120);
+    const preMatch = raw.match(/<pre>([^<]+)<\/pre>/i);
+    const snippet =
+      preMatch?.[1]?.trim() ??
+      raw.replace(/\s+/g, " ").slice(0, 160);
     throw new Error(
       response.ok
         ? "Server returned a non-JSON response"

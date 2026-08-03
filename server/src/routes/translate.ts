@@ -6,7 +6,7 @@ export const translateRouter = Router();
 
 translateRouter.post("/", async (req, res) => {
   try {
-    const sourceLang = String(req.query.sourceLang ?? "en");
+    const sourceLangParam = String(req.query.sourceLang ?? "auto");
     const targetLang = String(req.query.targetLang ?? "he");
     const format = String(req.query.format ?? "webm");
 
@@ -17,11 +17,14 @@ translateRouter.post("/", async (req, res) => {
       return;
     }
 
+    const sourceLangOverride =
+      sourceLangParam === "auto" ? undefined : sourceLangParam;
+
     const result = await runTranslationPipeline({
       audio,
-      sourceLang,
       targetLang,
       format,
+      sourceLangOverride,
     });
 
     res.json({
@@ -32,6 +35,7 @@ translateRouter.post("/", async (req, res) => {
       audioBase64: result.audio.toString("base64"),
       audioFormat: result.audioFormat,
       latencyMs: result.latencyMs,
+      skippedTts: result.skippedTts ?? false,
     });
   } catch (error) {
     console.error("translate route error:", error);

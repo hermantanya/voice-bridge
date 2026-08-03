@@ -596,6 +596,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   }, [resetWebRecordingState]);
 
   const playAudioBase64 = useCallback(async (audioBase64: string) => {
+    if (!audioBase64.trim()) {
+      return;
+    }
+
     if (Platform.OS === "web") {
       const audio = new window.Audio(`data:audio/mp3;base64,${audioBase64}`);
       await audio.play();

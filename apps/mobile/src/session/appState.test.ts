@@ -46,7 +46,7 @@ test("generateRoomCode returns six uppercase characters", () => {
   assert.match(code, /^[A-Z0-9]{6}$/);
 });
 
-test("buildJoinRoomPayload sends language, gender, and optional voice id", () => {
+test("buildJoinRoomPayload sends translate-to, gender, and optional voice id", () => {
   assert.deepEqual(
     buildJoinRoomPayload({
       roomCode: "ABCD",
@@ -55,7 +55,6 @@ test("buildJoinRoomPayload sends language, gender, and optional voice id", () =>
     }),
     {
       roomCode: "ABCD",
-      speakLang: "ru",
       hearLang: "ru",
       speakerGender: "male",
     },
@@ -66,12 +65,13 @@ test("buildJoinRoomPayload sends language, gender, and optional voice id", () =>
       roomCode: "ABCD",
       myLang: "en",
       speakerGender: "female",
+      speakLangOverride: "he",
       elevenlabsVoiceId: " voice-123 ",
     }),
     {
       roomCode: "ABCD",
-      speakLang: "en",
       hearLang: "en",
+      speakLangOverride: "he",
       speakerGender: "female",
       elevenlabsVoiceId: "voice-123",
     },

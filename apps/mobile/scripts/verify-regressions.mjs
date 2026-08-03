@@ -13,7 +13,7 @@ const checks = [
   {
     name: "settings scrollable on all platforms",
     file: "src/screens/SettingsScreen.tsx",
-    required: ["<ScrollView", "Save and go back", "My gender"],
+    required: ["<ScrollView", "Save and go back", "My gender", "Translate to"],
     forbidden: ['Platform.OS === "web"'],
   },
   {
@@ -47,7 +47,12 @@ const checks = [
       "releaseTurn",
       "shouldApplyTurnState",
     ],
-    forbidden: ["speakerGender,\n    resetTurnState"],
+    forbidden: ["speakerGender,\n    resetTurnState", "sourceLang: myLang"],
+  },
+  {
+    name: "socket re-joins when voice profile updates",
+    file: "src/hooks/useSocket.ts",
+    required: ["emitJoinRoom", "connectedRef", "usedClonedVoice"],
   },
   {
     name: "voice profile hook and storage exist",
@@ -77,6 +82,16 @@ const checks = [
     required: ["acquireWebMicrophoneStream"],
   },
   {
+    name: "voice setup script language picker",
+    file: "src/screens/VoiceSetupScreen.tsx",
+    required: ["Script language", "scriptLang", "setScriptLang"],
+  },
+  {
+    name: "settings voice preview from enrolled voice",
+    file: "src/screens/SettingsScreen.tsx",
+    required: ["Play voice preview", "previewEnrolledVoice", "playVoicePreviewAudio"],
+  },
+  {
     name: "audio stop returns delivery status",
     file: "src/hooks/useAudio.ts",
     required: ["Promise<boolean>", "pendingStopResolveRef", "nativeStopRequestedRef"],
@@ -86,10 +101,12 @@ const checks = [
     file: "src/session/appState.test.ts",
     required: [
       "buildJoinRoomPayload",
+      "hearLang",
       "formatProfileBadge",
       "voiceProfileLabel",
       "resolveVoiceProfileStatus",
     ],
+    forbidden: ["speakLang:"],
   },
   {
     name: "server join race fix and release_turn",
@@ -102,7 +119,11 @@ const checks = [
       "release_turn",
       "speakerGender",
       "elevenlabsVoiceId",
-      "voiceId: socket.data.elevenlabsVoiceId",
+      "speakerVoiceId",
+      "resolveTargetLanguage",
+      "socket.data.hearLang",
+      "skippedTts",
+      "usedClonedVoice",
     ],
     forbidden: ["syncRoomParticipants", "room.participantIds = liveIds"],
   },
@@ -114,7 +135,20 @@ const checks = [
       "createInstantVoiceCloneFromBuffer",
       "deleteElevenLabsVoice",
       "previewAudioBase64",
+      "/preview",
     ],
+  },
+  {
+    name: "pipeline auto-detect and same-language skip",
+    file: "src/pipeline/index.ts",
+    root: serverRoot,
+    required: ["sourceLangOverride", "skippedTts", "shouldSkipTranslation"],
+  },
+  {
+    name: "stt whisper auto-detect",
+    file: "src/pipeline/stt.ts",
+    root: serverRoot,
+    required: ["verbose_json", "languageOverride", "detectedLang"],
   },
   {
     name: "pipeline uses cloned voice when voiceId is present",

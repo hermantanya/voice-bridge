@@ -25,6 +25,7 @@ export default function App() {
 
   const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
+  const sessionReady = inSession && voiceProfile.loaded;
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
   );
@@ -42,7 +43,7 @@ export default function App() {
     myLang,
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
-    enabled: inSession,
+    enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
   });
 
@@ -65,7 +66,7 @@ export default function App() {
 
   const audio = useAudio({
     onAudioReady: handleAudioReady,
-    enabled: inSession,
+    enabled: sessionReady,
   });
 
   useEffect(() => {
@@ -145,6 +146,7 @@ export default function App() {
           speakerGender={speakerGender}
           onSpeakerGenderChange={setSpeakerGender}
           voiceStatus={voiceProfile.voiceStatus}
+          elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
           onOpenVoiceSetup={() => setScreen("voiceSetup")}
           onRemoveVoice={voiceProfile.removeElevenLabsVoice}
           onBack={() => setScreen("home")}
@@ -163,8 +165,11 @@ export default function App() {
           roomCode={activeRoomCode}
           myLang={myLang}
           partnerLang={socket.partnerLang}
+          voiceStatus={voiceProfile.voiceStatus}
+          lastReceived={socket.lastReceived}
           status={socket.status}
           participants={socket.participants}
+          loadingVoiceProfile={!voiceProfile.loaded}
           participantId={socket.participantId}
           errorMessage={socket.errorMessage}
           isRecording={audio.isRecording}
@@ -225,6 +230,7 @@ export default function App() {
     voiceProfile.removeElevenLabsVoice,
     voiceProfile.setElevenLabsVoiceId,
     voiceProfile.voiceStatus,
+    voiceProfile.loaded,
     roomCode,
     screen,
     socket.myBillableMs,
@@ -239,6 +245,7 @@ export default function App() {
     socket.participantId,
     socket.participants,
     socket.partnerLang,
+    socket.lastReceived,
     socket.status,
     socket.transcript,
   ]);
