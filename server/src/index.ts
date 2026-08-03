@@ -82,7 +82,7 @@ app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "voice-bridge-server",
-    version: "1.1.0",
+    version: "1.3.0",
     timestamp: new Date().toISOString(),
   });
 });

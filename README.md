@@ -2,17 +2,22 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in yours.
 
-**v1.2 (current):** English, Hebrew, and Russian. Push-to-talk, first-come-first-serve turns, phone + browser, live transcripts, per-person speaking time, **gender-aware translation** (Hebrew/Russian grammar), and **cloned-voice TTS** (enroll once; partner hears your voice via ElevenLabs).
+**v1.3 (current):** English, Hebrew, and Russian. **Auto-detect** what you speak; you only set **Translate to** (the language you want to hear). Push-to-talk, first-come-first-serve turns, phone + browser, live transcripts, per-person speaking time, **gender-aware translation**, **cloned-voice TTS** (ElevenLabs), and **Settings voice preview** for enrolled voices.
+
+**v1.2:** Cloned-voice TTS and Settings enrollment (~30s minimum).
 
 **v1.1:** Preset OpenAI TTS (`nova`) — still used as fallback when a participant has not enrolled a voice.
 
 ## What it does
 
 - Two people join the same room with a short code
-- Each person sets **My language** (English, Hebrew, or Russian) and **My gender** (for correct Hebrew/Russian grammar in translations)
+- Each person sets **Translate to** (English, Hebrew, or Russian — the language you want to hear) and **My gender** (for correct Hebrew/Russian grammar in translations)
+- **Speak any supported language** — the server auto-detects what you said (EN / HE / RU)
 - **First come, first serve:** whoever holds **Hold to talk** first speaks
-- Speech is transcribed, translated, and played to the other person
-- **Real voice (v1.2):** enroll once in Settings → partner hears translations in **your** cloned voice (ElevenLabs IVC); unenrolled users fall back to preset voice
+- Speech is transcribed, translated when needed, and played to the other person
+- **Same language:** if you speak the language your partner wants to hear, they get the transcript only (no robotic TTS replay)
+- **Real voice (v1.2+):** enroll once in Settings → partner hears translations in **your** cloned voice (ElevenLabs IVC); unenrolled users fall back to preset voice
+- **Voice preview (v1.3):** replay a short sample of your enrolled voice from Settings without re-recording
 - Transcripts appear in a scrollable two-column history (You / Others)
 - Session stats track connection time and each person's speaking time (hold + translation)
 - On web, choose which microphone to use (e.g. Mac built-in vs. phone relay)
@@ -21,22 +26,26 @@ Real-time voice translation between two devices. Hold a button, speak in your la
 
 ### 1. Set languages (before joining)
 
-On each device: tap the language badge on the home screen (or **Language settings**) and pick the language **you** speak. Set **My gender** there too — it improves Hebrew and Russian translations (verb forms, adjectives, second-person address).
+On each device: tap the language badge on the home screen (or **Language settings**) and pick **Translate to** — the language **you want to hear** translations in. Set **My gender** there too — it improves Hebrew and Russian translations (verb forms, adjectives, second-person address).
 
-Example: Hebrew speaker sets Hebrew + female, English speaker sets English + male, Russian speaker sets Russian + male.
+You can speak English, Hebrew, or Russian in any turn; the server detects it automatically.
 
-> Language and gender are sent when you join a room. If you change them later, leave and rejoin.
+Example: Person A sets Translate to Hebrew, Person B sets Translate to English. Either can speak any of the three languages; each hears translations in their chosen language.
+
+> Translate-to and gender are sent when you join a room. If you change them later, leave and rejoin.
 
 **Web only:** open **Language settings** to pick your microphone if the browser chose the wrong device (common on Mac when an iPhone is nearby).
 
-### 1b. Set up your voice (optional, v1.2)
+### 1b. Set up your voice (optional, v1.2+)
 
 In **Language settings** → **Set up my voice**:
 
-1. Read the on-screen script in your language (~45–60 seconds; **30 seconds minimum** to create)
+1. Read the on-screen script (~45–60 seconds; **30 seconds minimum** to create). Script language defaults to your Translate-to setting; change it on the setup screen if needed.
 2. Stop recording, review, then **Create my voice**
 3. Preview plays a short phrase in your cloned voice
 4. Join a room — your partner hears translations in **your** voice
+
+Already enrolled? Use **Play voice preview** in Settings to hear your voice again without re-recording.
 
 Voice profile is stored **on this device** until v1.4 (signed-in sync). Re-enroll or remove from Settings anytime.
 
@@ -86,7 +95,7 @@ While you hold the button or translation is running, the button animates and spe
 
 ## Architecture
 
-**v1.2 (current):** OpenAI for STT + translate; **ElevenLabs IVC** for cloned-voice TTS when a participant has enrolled; OpenAI preset `nova` as fallback.
+**v1.3 (current):** OpenAI Whisper **auto-detects** spoken language; GPT-4o-mini translates when source ≠ listener's Translate-to; **ElevenLabs IVC** for cloned-voice TTS when enrolled; OpenAI preset `nova` as fallback. Same-language turns skip TTS (transcript only).
 
 **Provider history:** OpenAI Custom Voices was spiked and blocked (404). Fish Audio was spiked as an alternative; **ElevenLabs** was chosen for v1.2 production. See [EXECUTION_PLAN.md](EXECUTION_PLAN.md).
 
@@ -94,8 +103,8 @@ While you hold the button or translation is running, the button animates and spe
 Phone/Browser                    Railway Server                 OpenAI + ElevenLabs
      │                                │                              │
      │  WebSocket (Socket.io)         │                              │
-     ├───────────────────────────────►│  Whisper STT ───────────────►│ OpenAI
-     │  join_room (+ voice_id)        │  GPT-4o-mini translate ─────►│ OpenAI
+     ├───────────────────────────────►│  Whisper STT (auto-detect) ──►│ OpenAI
+     │  join_room (hearLang + voice_id)│  GPT-4o-mini translate ─────►│ OpenAI
      │  audio_chunk / claim_turn      │  ElevenLabs TTS (speaker's   │
      │◄───────────────────────────────┤   cloned voice_id) ─────────►│ ElevenLabs
      │  translation_result + audio    │                              │
@@ -155,11 +164,13 @@ EXPO_PUBLIC_SERVER_URL=https://your-app.up.railway.app
 
 Restart Expo after changing (`npx expo start --clear`).
 
-### Voice cloning (v1.2 — shipped)
+### Voice cloning (v1.2+ — shipped)
 
-**Provider:** ElevenLabs IVC (Instant Voice Cloning). OpenAI handles Whisper STT and GPT-4o-mini translation only.
+**Provider:** ElevenLabs IVC (Instant Voice Cloning). OpenAI handles Whisper STT (auto-detect in v1.3) and GPT-4o-mini translation only.
 
-Enrollment flow: Settings → record script in your language (30s minimum) → `POST /api/voices/enroll` → `voice_id` saved locally → sent on every `join_room`. The **listener** hears translation synthesized with the **speaker's** cloned voice.
+Enrollment flow: Settings → record script (30s minimum) → `POST /api/voices/enroll` → `voice_id` saved locally → sent on every `join_room`. The **listener** hears translation synthesized with the **speaker's** cloned voice.
+
+**Replay enrolled voice:** Settings → **Play voice preview** → `POST /api/voices/preview` with stored `voice_id` → short TTS sample in your Translate-to language.
 
 **Spike scripts** (reference / re-test quality):
 
@@ -184,7 +195,7 @@ npm run spike:voice
 
 | Event | Direction | Purpose |
 |---|---|---|
-| `join_room` | client → server | Join with room code, language, gender, optional `elevenlabsVoiceId` |
+| `join_room` | client → server | Join with room code, `hearLang` (Translate to), gender, optional `elevenlabsVoiceId` |
 | `claim_turn` | client → server | Claim speaking turn (first press wins) |
 | `audio_chunk` | client → server | Send recorded audio |
 | `turn_state` | server → clients | Whose turn / processing state |
@@ -199,9 +210,11 @@ npm run spike:voice
 
 ## API
 
-`POST /api/translate?sourceLang=en&targetLang=he&format=wav`: send raw audio, get JSON with `sourceText`, `translatedText`, `audioBase64`, `latencyMs`.
+`POST /api/translate?sourceLang=auto&targetLang=he&format=wav`: send raw audio, get JSON with `sourceText`, `translatedText`, `audioBase64`, `latencyMs`. Default `sourceLang=auto` detects spoken language.
 
 `POST /api/voices/enroll`: JSON body with `audioBase64`, `format`, `durationMs`, `language`, optional `gender` — creates ElevenLabs IVC clone, returns `{ voiceId, previewAudioBase64 }`.
+
+`POST /api/voices/preview`: JSON body with `voiceId`, `language`, optional `gender` — synthesizes a short preview phrase for an existing enrolled voice.
 
 `DELETE /api/voices/:voiceId`: remove enrolled voice from ElevenLabs.
 
@@ -232,18 +245,19 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 **Optional later:** user auth, per-room tokens, or requiring everyone to self-host their own Railway backend.
 
-## Known limitations (v1.2)
+## Known limitations (v1.3)
 
 - Two participants per room only
-- English, Hebrew, and Russian only (any pair: EN ↔ HE ↔ RU)
+- English, Hebrew, and Russian only (auto-detected; any pair: EN ↔ HE ↔ RU)
 - One speaker at a time; floor is open until someone presses (not pre-assigned)
 - ~3–6 second latency per message
 - Web push-to-talk requires Chrome; mic active only while holding button
-- Language and gender settings apply on room join; rejoin after changes
+- Translate-to and gender settings apply on room join; rejoin after changes
 - Speaking time counts update after each turn completes, not live during hold
 - Real voice requires one-time enrollment per device; unenrolled users use preset TTS
 - Voice profile is device-local until v1.4 (no cross-device sync yet)
 - Cloned voices live under the server's ElevenLabs account (Starter slot cap)
+- Same-language turns deliver transcript only (no audio playback to listener)
 
 ## Roadmap
 
@@ -256,7 +270,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 | **v1.0** (done) | EN ↔ HE, 2 participants, push-to-talk, first-come-first-serve turns, phone + web |
 | **v1.1** (done) | + Russian (EN ↔ HE ↔ RU); scrollable transcript; session + speaking time stats; web mic picker; merged room usage on server (for future billing) |
 | **v1.2** (done) | Real voice on translated speech (ElevenLabs IVC); Settings enrollment (~30s minimum); gender-aware Hebrew/Russian translation; device-local `voice_id`; preset fallback |
-| v1.3 | Auto-detect spoken language; user sets preferred hearing language only |
+| **v1.3** (done) | Auto-detect spoken language; **Translate to** UX; same-language transcript-only skip; Settings voice preview; join waits for voice profile load |
 | v1.4 | App Store / PWA; signed-in user profiles; sync voice across devices |
 
 ### Group and table (v2–v3)

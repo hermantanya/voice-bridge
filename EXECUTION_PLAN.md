@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** August 2026 (v1.2 shipped — ElevenLabs IVC)
+**Last updated:** August 2026 (v1.3 shipped — auto-detect language)
 
 ---
 
@@ -23,7 +23,8 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.0** — EN ↔ HE, 2-person push-to-talk | ✅ Shipped |
 | **v1.1** — + RU, transcripts, speaking-time stats, web mic picker | ✅ Shipped |
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
-| **v1.3** — Auto-detect spoken language | 📋 Next |
+| **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
+| **v1.4** — App Store / PWA; signed-in profiles; voice sync | 📋 Next |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -159,24 +160,109 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 
 ---
 
-## Roadmap after v1.2
+## Roadmap after v1.3
 
 | Version | Focus |
 |---|---|
-| **v1.3** | Auto-detect spoken language; user sets hearing language only |
 | **v1.4** | App Store / PWA; **signed-in user profiles**; sync `voice_id` across devices; migrate off device-only storage |
 | **v2.0** | Hands-free (VAD); pass-through languages; saved language prefs |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 
 ---
 
-## Known v1.2 limitations (ship with eyes open)
+## v1.3 architecture (shipped)
+
+```
+Phone/Browser                 Railway Server                    Providers
+     │                              │                              │
+     │  WebSocket                   │                              │
+     ├─────────────────────────────►│  Whisper STT (auto-detect) ─►│ OpenAI
+     │  join_room (hearLang)        │  GPT-4o-mini translate ─────►│ OpenAI
+     │  audio_chunk                 │  ElevenLabs TTS (speaker's   │
+     │◄─────────────────────────────┤   cloned voice_id) ─────────►│ ElevenLabs
+     │  translation_result + audio  │  (fallback: OpenAI nova)     │
+     │                              │  same-lang → transcript only │
+```
+
+**Language routing:**
+
+- User sets **Translate to** (`hearLang`) — the language they want to hear
+- Server auto-detects spoken language on each turn (Whisper `verbose_json`)
+- If detected language = listener's Translate-to → skip translation + TTS (`skippedTts: true`)
+- Otherwise translate + TTS (cloned voice when speaker enrolled)
+
+**Voice preview (Settings):**
+
+```
+Settings → Play voice preview
+        → POST /api/voices/preview { voiceId, language, gender }
+        → ElevenLabs TTS with stored voice_id
+        → play sample on device
+```
+
+---
+
+## Known v1.3 limitations (ship with eyes open)
 
 - Two participants only (unchanged)
 - Real voice requires enrollment; unenrolled users fall back to preset voice
 - Voice profile is **per device** until v1.4
 - ~3–6s latency may increase slightly with ElevenLabs TTS
 - All clones live under **our** ElevenLabs account (Starter slot cap)
+- Same-language turns are transcript-only (no audio to listener)
+
+---
+
+## v1.3 execution phases
+
+### Phase 1 — Server (done)
+
+- [x] `languageDetection.ts` — normalize Whisper codes/names (`hebrew` → `he`)
+- [x] `stt.ts` — auto-detect via Whisper `verbose_json`; optional override
+- [x] Pipeline skips translation + TTS when source = target
+- [x] `join_room` uses `hearLang` for listener routing
+- [x] `POST /api/voices/preview` for Settings replay
+- [x] Release turn floor on translation errors (no stuck "partner speaking")
+
+### Phase 2 — Mobile (done)
+
+- [x] Settings: **Translate to** (was "My language")
+- [x] Session: voice status, last-heard mode (cloned / preset / same language)
+- [x] Settings: **Play voice preview** for enrolled voices
+- [x] Wait for voice profile load before socket join
+- [x] Re-emit `join_room` when voice id or language changes
+- [x] Voice setup: script language picker (defaults to Translate-to)
+
+### Phase 3 — Deploy + docs (done)
+
+- [x] Push to GitHub, deploy Railway
+- [x] E2E: EN / HE / RU auto-detect across web + mobile
+- [x] Update README, VISION, EXECUTION_PLAN; bump to v1.3.0
+
+---
+
+## Files shipped (v1.3)
+
+```
+server/
+  src/pipeline/languageDetection.ts
+  src/pipeline/languageDetection.test.ts
+  src/pipeline/stt.ts
+  src/pipeline/index.ts
+  src/routes/voices.ts          (+ POST /preview)
+  src/ws/handler.ts
+  src/voices/enrollment.ts
+
+apps/mobile/
+  src/screens/SettingsScreen.tsx
+  src/screens/SessionScreen.tsx
+  src/screens/VoiceSetupScreen.tsx
+  src/session/appState.ts
+  src/session/voicePreviewPlayback.ts
+  src/api/enrollVoice.ts
+  src/hooks/useSocket.ts
+  App.tsx
+```
 
 ---
 
