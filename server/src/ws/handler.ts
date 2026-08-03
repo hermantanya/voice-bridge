@@ -10,11 +10,16 @@ import {
   type ActiveConversationTracker,
 } from "./activeConversation.js";
 import { rejectIfAudioLimited, type SocketRateLimits } from "./rateLimit.js";
+import {
+  reconcileParticipantsOnJoin,
+  removeParticipant,
+} from "./roomParticipants.js";
 
 type JoinRoomPayload = {
   roomCode: string;
   speakLang?: string;
   hearLang?: string;
+  speakerGender?: "female" | "male";
 };
 
 type AudioChunkPayload = {
@@ -115,18 +120,28 @@ function emitTurnState(io: Server, roomCode: string, room: RoomState): void {
   });
 }
 
-function syncRoomParticipants(
+function emitParticipantsSync(
+  io: Server,
+  roomCode: string,
   room: RoomState,
-  liveSocketIds: Set<string>,
-  joiningSocketId: string,
+  participants: number,
 ): void {
-  for (const id of [...room.participantIds]) {
-    if (!liveSocketIds.has(id)) {
-      room.participantIds.delete(id);
-    }
-  }
+  io.to(roomCode).emit("participants_sync", {
+    roomCode,
+    participants,
+    ...buildUsagePayload(room),
+  });
+}
 
-  room.participantIds.add(joiningSocketId);
+async function broadcastRoomParticipants(
+  io: Server,
+  roomCode: string,
+  room: RoomState,
+): Promise<number> {
+  const socketsInRoom = await io.in(roomCode).fetchSockets();
+  const liveIds = new Set(socketsInRoom.map((socket) => socket.id));
+
+  room.participantIds = liveIds;
 
   if (
     room.turnParticipantId &&
@@ -135,6 +150,8 @@ function syncRoomParticipants(
     room.turnParticipantId = null;
     room.phase = "waiting";
   }
+
+  return liveIds.size;
 }
 
 function openTurnFloor(io: Server, roomCode: string, room: RoomState): void {
@@ -158,7 +175,7 @@ export function registerSocketHandlers(
     console.log(`client connected: ${socket.id}`);
 
     socket.on("join_room", async (payload: JoinRoomPayload) => {
-      const { roomCode, speakLang, hearLang } = payload;
+      const { roomCode, speakLang, hearLang, speakerGender } = payload;
 
       if (!roomCode?.trim()) {
         socket.emit("error", { message: "roomCode is required" });
@@ -176,15 +193,20 @@ export function registerSocketHandlers(
 
       const room = rooms.get(code)!;
       const socketsInRoom = await io.in(code).fetchSockets();
-      const liveSocketIds = new Set(socketsInRoom.map((s) => s.id));
 
-      syncRoomParticipants(room, liveSocketIds, socket.id);
+      const participants = reconcileParticipantsOnJoin(
+        room,
+        socketsInRoom,
+        socket.id,
+      );
 
       socket.data.roomCode = code;
       socket.data.speakLang = myLang;
       socket.data.hearLang = myLang;
+      if (speakerGender === "female" || speakerGender === "male") {
+        socket.data.speakerGender = speakerGender;
+      }
 
-      const participants = room.participantIds.size;
       ensureSessionStarted(room);
 
       // Never pre-assign: when both are present, floor stays open until
@@ -223,6 +245,14 @@ export function registerSocketHandlers(
       console.log(
         `socket ${socket.id} joined room ${code} (${participants} participants, lang=${myLang}, turn=${room.turnParticipantId})`,
       );
+
+      void (async () => {
+        const syncedParticipants = await broadcastRoomParticipants(io, code, room);
+        if (syncedParticipants !== participants) {
+          ensureSessionStarted(room);
+          emitParticipantsSync(io, code, room, syncedParticipants);
+        }
+      })();
     });
 
     socket.on("claim_turn", (payload, callback) => {
@@ -269,6 +299,30 @@ export function registerSocketHandlers(
       room.turnParticipantId = socket.id;
       room.phase = "speaking";
       emitTurnState(io, code, room);
+      callback?.({ ok: true });
+    });
+
+    socket.on("release_turn", (_payload, callback) => {
+      const code = socket.data.roomCode as string | undefined;
+
+      if (!code) {
+        callback?.({ ok: false, message: "Join a room first" });
+        return;
+      }
+
+      const room = rooms.get(code);
+      if (!room) {
+        callback?.({ ok: false, message: "Room not found" });
+        return;
+      }
+
+      if (
+        room.phase === "speaking" &&
+        room.turnParticipantId === socket.id
+      ) {
+        openTurnFloor(io, code, room);
+      }
+
       callback?.({ ok: true });
     });
 
@@ -328,11 +382,22 @@ export function registerSocketHandlers(
           ? ((listener.data.speakLang as string) ?? "en")
           : ((payload.targetLang as string) ?? "en");
 
+        const speakerGender = socket.data.speakerGender as
+          | "female"
+          | "male"
+          | undefined;
+        const addresseeGender = listener?.data.speakerGender as
+          | "female"
+          | "male"
+          | undefined;
+
         const result = await runTranslationPipeline({
           audio,
           sourceLang,
           targetLang,
           format: payload.format ?? "webm",
+          speakerGender,
+          addresseeGender,
         });
 
         const turnActiveMs = speechMs + result.latencyMs;
@@ -384,7 +449,7 @@ export function registerSocketHandlers(
       if (code && rooms.has(code)) {
         const room = rooms.get(code)!;
         closeActivePipeline(room.activeConversation, socket.id);
-        room.participantIds.delete(socket.id);
+        removeParticipant(room, socket.id);
 
         if (room.participantIds.size === 0) {
           rooms.delete(code);

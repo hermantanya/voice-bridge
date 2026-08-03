@@ -17,13 +17,18 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "tsx": "^4.19.2",
     "typescript": "~5.9.2"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "verify:settings": "node scripts/verify-settings-screen.mjs",
+    "verify:regressions": "node scripts/verify-regressions.mjs",
+    "verify": "npm run verify:settings && npm run verify:regressions"
   },
   "private": true
 }

@@ -2,24 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, SafeAreaView, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
-import type { LanguageCode } from "./src/config";
+import type { LanguageCode, SpeakerGender } from "./src/config";
 import { useAudio } from "./src/hooks/useAudio";
 import { useSocket } from "./src/hooks/useSocket";
+import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
+import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 
 type Screen = "home" | "session" | "settings";
 
-function generateRoomCode(): string {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [roomCode, setRoomCode] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [myLang, setMyLang] = useState<LanguageCode>("en");
+  const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
   const [homeResetKey, setHomeResetKey] = useState(0);
 
   const inSession = screen === "session" && !!activeRoomCode;
@@ -38,6 +37,7 @@ export default function App() {
   const socket = useSocket({
     roomCode: activeRoomCode,
     myLang,
+    speakerGender,
     enabled: inSession,
     onIncomingTranslation: handleIncomingTranslation,
   });
@@ -68,18 +68,37 @@ export default function App() {
     playAudioRef.current = audio.playAudioBase64;
   }, [audio.playAudioBase64]);
 
-  const handleStartRecording = useCallback(async () => {
-    holdStartedAtRef.current = Date.now();
-    const claimed = await socket.claimTurn();
-    if (!claimed) {
-      holdStartedAtRef.current = null;
-      throw new Error("Someone else started speaking first");
-    }
-    await audio.startRecording();
-  }, [audio.startRecording, socket.claimTurn]);
+  const handleStartRecording = useCallback(
+    async (stillHolding: () => boolean) => {
+      holdStartedAtRef.current = Date.now();
+      const result = await runHoldToTalkStart({
+        stillHolding,
+        claimTurn: socket.claimTurn,
+        releaseTurn: socket.releaseTurn,
+        startRecording: audio.startRecording,
+        stopRecording: audio.stopRecording,
+      });
+
+      if (result === "denied") {
+        throw new Error("Someone else started speaking first");
+      }
+
+      if (shouldReleaseHoldTimestamp(result)) {
+        holdStartedAtRef.current = null;
+      }
+    },
+    [audio.startRecording, audio.stopRecording, socket.claimTurn, socket.releaseTurn],
+  );
 
   useEffect(() => {
-    if (!inSession || socket.isMyTurn || socket.isOpenTurn || !audio.isRecording) {
+    if (
+      !shouldForceStopRecording({
+        inSession,
+        isMyTurn: socket.isMyTurn,
+        isOpenTurn: socket.isOpenTurn,
+        isRecording: audio.isRecording,
+      })
+    ) {
       return;
     }
 
@@ -107,6 +126,8 @@ export default function App() {
         <SettingsScreen
           myLang={myLang}
           onMyLangChange={setMyLang}
+          speakerGender={speakerGender}
+          onSpeakerGenderChange={setSpeakerGender}
           onBack={() => setScreen("home")}
           showMicrophoneSettings={Platform.OS === "web"}
           microphoneDevices={audio.inputDevices}
@@ -149,6 +170,7 @@ export default function App() {
         key={`home-${homeResetKey}`}
         roomCode={roomCode}
         myLang={myLang}
+        speakerGender={speakerGender}
         onRoomCodeChange={(value) => setRoomCode(value.toUpperCase())}
         onCreateRoom={() => {
           const code = generateRoomCode();
@@ -157,7 +179,7 @@ export default function App() {
           setScreen("session");
         }}
         onJoinRoom={() => {
-          const code = roomCode.trim().toUpperCase();
+          const code = normalizeRoomCode(roomCode);
           setActiveRoomCode(code);
           setRoomCode("");
           setScreen("session");
@@ -178,6 +200,7 @@ export default function App() {
     handleStartRecording,
     homeResetKey,
     myLang,
+    speakerGender,
     roomCode,
     screen,
     socket.myBillableMs,

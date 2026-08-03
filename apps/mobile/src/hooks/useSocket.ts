@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
-import { SERVER_URL, type LanguageCode } from "../config";
+import { SERVER_URL, type LanguageCode, type SpeakerGender } from "../config";
+import {
+  buildJoinRoomPayload,
+  shouldApplyTurnState,
+  shouldClearPartnerLang,
+  type TurnState,
+} from "../session/appState";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -54,12 +60,6 @@ function createTranscriptEntry(
   };
 }
 
-type TurnState = {
-  turnParticipantId: string | null;
-  phase: TurnPhase;
-  version: number;
-};
-
 type JoinedRoomPayload = {
   roomCode: string;
   participantId: string;
@@ -110,6 +110,7 @@ function readPartnerBillableMs(
 type UseSocketOptions = {
   roomCode: string;
   myLang: LanguageCode;
+  speakerGender: SpeakerGender;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
@@ -117,11 +118,15 @@ type UseSocketOptions = {
 export function useSocket({
   roomCode,
   myLang,
+  speakerGender,
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const onIncomingRef = useRef(onIncomingTranslation);
+  const myLangRef = useRef(myLang);
+  const speakerGenderRef = useRef(speakerGender);
+  const roomCodeRef = useRef(roomCode);
   const turnStateRef = useRef<TurnState>({
     turnParticipantId: null,
     phase: "waiting",
@@ -282,11 +287,23 @@ export function useSocket({
   }, [onIncomingTranslation]);
 
   useEffect(() => {
+    myLangRef.current = myLang;
+  }, [myLang]);
+
+  useEffect(() => {
+    speakerGenderRef.current = speakerGender;
+  }, [speakerGender]);
+
+  useEffect(() => {
+    roomCodeRef.current = roomCode;
+  }, [roomCode]);
+
+  useEffect(() => {
     participantIdRef.current = participantId;
   }, [participantId]);
 
   const applyTurnState = useCallback((turnState: TurnState) => {
-    if (turnState.version < turnStateRef.current.version) {
+    if (!shouldApplyTurnState(turnStateRef.current, turnState)) {
       return;
     }
 
@@ -367,6 +384,25 @@ export function useSocket({
     });
   }, [applyTurnState]);
 
+  const releaseTurn = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        resolve();
+        return;
+      }
+
+      socket.emit("release_turn", {}, () => {
+        applyTurnState({
+          turnParticipantId: null,
+          phase: "waiting",
+          version: turnStateRef.current.version + 1,
+        });
+        resolve();
+      });
+    });
+  }, [applyTurnState]);
+
   const sendAudioChunk = useCallback(
     (
       audioBase64: string,
@@ -420,11 +456,14 @@ export function useSocket({
 
     socket.on("connect", () => {
       setStatus("connected");
-      socket.emit("join_room", {
-        roomCode,
-        speakLang: myLang,
-        hearLang: myLang,
-      });
+      socket.emit(
+        "join_room",
+        buildJoinRoomPayload({
+          roomCode: roomCodeRef.current,
+          myLang: myLangRef.current,
+          speakerGender: speakerGenderRef.current,
+        }),
+      );
     });
 
     socket.on("disconnect", () => {
@@ -474,7 +513,7 @@ export function useSocket({
         turnState?: TurnState;
       } & UsagePayload) => {
         setParticipants(payload.participants);
-        if (payload.participants < 2) {
+        if (shouldClearPartnerLang(payload.participants)) {
           setPartnerLang(null);
           resetTurnState();
         } else if (payload.turnState) {
@@ -518,6 +557,21 @@ export function useSocket({
       },
     );
 
+    socket.on(
+      "participants_sync",
+      (payload: {
+        participants: number;
+        turnState?: TurnState;
+      } & UsagePayload) => {
+        setParticipants(payload.participants);
+        applyUsagePayload(payload);
+        ensureSessionStartedLocally(payload.participants);
+        if (payload.turnState) {
+          applyTurnState(payload.turnState);
+        }
+      },
+    );
+
     socket.on("error", (payload: { message?: string }) => {
       setErrorMessage(payload.message ?? "Unknown socket error");
     });
@@ -533,7 +587,6 @@ export function useSocket({
     disconnect,
     ensureSessionStartedLocally,
     enabled,
-    myLang,
     resetTurnState,
     roomCode,
   ]);
@@ -558,6 +611,7 @@ export function useSocket({
     sessionStartedAt,
     disconnect,
     claimTurn,
+    releaseTurn,
     sendAudioChunk,
   };
 };

@@ -1,12 +1,25 @@
 import { useEffect } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { LANGUAGES, languageLabel, type LanguageCode } from "../config";
+import {
+  LANGUAGES,
+  SPEAKER_GENDERS,
+  type LanguageCode,
+  type SpeakerGender,
+} from "../config";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
 
 type SettingsScreenProps = {
   myLang: LanguageCode;
   onMyLangChange: (lang: LanguageCode) => void;
+  speakerGender: SpeakerGender;
+  onSpeakerGenderChange: (gender: SpeakerGender) => void;
   onBack: () => void;
   showMicrophoneSettings?: boolean;
   microphoneDevices?: MicrophoneDevice[];
@@ -18,6 +31,8 @@ type SettingsScreenProps = {
 export function SettingsScreen({
   myLang,
   onMyLangChange,
+  speakerGender,
+  onSpeakerGenderChange,
   onBack,
   showMicrophoneSettings = false,
   microphoneDevices = [],
@@ -31,8 +46,8 @@ export function SettingsScreen({
     }
   }, [onRefreshMicrophones, showMicrophoneSettings]);
 
-  return (
-    <View style={styles.container}>
+  const content = (
+    <>
       <Text style={styles.title}>My language</Text>
       <Text style={styles.subtitle}>
         Pick the language you speak. You'll hear the other person in this same
@@ -50,6 +65,32 @@ export function SettingsScreen({
             >
               <Text style={[styles.optionText, active && styles.optionTextActive]}>
                 {lang.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={[styles.title, styles.sectionTitle]}>My gender</Text>
+      <Text style={styles.subtitle}>
+        Used for Hebrew and Russian grammar on both sides: when you speak and
+        when your partner speaks to you. Each person sets their own gender in
+        settings.
+      </Text>
+
+      <View style={styles.card}>
+        {SPEAKER_GENDERS.map((option) => {
+          const active = option.value === speakerGender;
+          return (
+            <Pressable
+              key={option.value}
+              style={[styles.option, active && styles.optionActive]}
+              onPress={() => onSpeakerGenderChange(option.value)}
+            >
+              <Text
+                style={[styles.optionText, active && styles.optionTextActive]}
+              >
+                {option.label}
               </Text>
             </Pressable>
           );
@@ -101,23 +142,39 @@ export function SettingsScreen({
           Each device should use the language spoken on that device.
         </Text>
         <Text style={styles.exampleText}>
-          Leave and rejoin the room after changing language.
+          Leave and rejoin the room after changing language or gender.
         </Text>
       </View>
 
       <Pressable style={styles.backButton} onPress={onBack}>
         <Text style={styles.backButtonText}>Save and go back</Text>
       </Pressable>
-    </View>
+    </>
+  );
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator
+    >
+      {content}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scroll: {
     flex: 1,
     backgroundColor: "#0f172a",
+  },
+  scrollContent: {
+    flexGrow: 1,
     padding: 24,
     paddingTop: 64,
+    paddingBottom: 48,
   },
   title: {
     color: "#f8fafc",

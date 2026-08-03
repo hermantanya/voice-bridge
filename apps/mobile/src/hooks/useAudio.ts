@@ -72,6 +72,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   const webSessionRef = useRef(0);
   const webStartInProgressRef = useRef(false);
   const webStopRequestedRef = useRef(false);
+  const nativeStopRequestedRef = useRef(false);
+  const pendingStopResolveRef = useRef<((delivered: boolean) => void) | null>(
+    null,
+  );
   const recordingStartedAtRef = useRef<number | null>(null);
   const onAudioReadyRef = useRef(onAudioReady);
 
@@ -104,6 +108,9 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     webChunksRef.current = [];
     webStartInProgressRef.current = false;
     webStopRequestedRef.current = false;
+    nativeStopRequestedRef.current = false;
+    pendingStopResolveRef.current?.(false);
+    pendingStopResolveRef.current = null;
     recordingStartedAtRef.current = null;
     setIsRecording(false);
 
@@ -361,13 +368,17 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
               type: mimeType || "audio/webm",
             });
 
-            if (blob.size === 0) {
-              recordingStartedAtRef.current = null;
-              return;
-            }
+          if (blob.size === 0) {
+            recordingStartedAtRef.current = null;
+            pendingStopResolveRef.current?.(false);
+            pendingStopResolveRef.current = null;
+            return;
+          }
 
-            const audioBase64 = await blobToBase64(blob);
-            deliverRecording(audioBase64, format);
+          const audioBase64 = await blobToBase64(blob);
+          deliverRecording(audioBase64, format);
+          pendingStopResolveRef.current?.(true);
+          pendingStopResolveRef.current = null;
           })();
         };
 
@@ -387,9 +398,14 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
+    nativeStopRequestedRef.current = false;
     const granted = await ensurePermissions();
     if (!granted) {
       throw new Error("Microphone permission is required.");
+    }
+
+    if (nativeStopRequestedRef.current) {
+      return;
     }
 
     await Audio.setAudioModeAsync({
@@ -397,11 +413,35 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       playsInSilentModeIOS: true,
     });
 
+    if (nativeStopRequestedRef.current) {
+      return;
+    }
+
     const recording = new Audio.Recording();
     await recording.prepareToRecordAsync(
       Audio.RecordingOptionsPresets.HIGH_QUALITY,
     );
+
+    if (nativeStopRequestedRef.current) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch {
+        // Recording never started.
+      }
+      return;
+    }
+
     await recording.startAsync();
+
+    if (nativeStopRequestedRef.current) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch {
+        // Ignore stop errors for cancelled starts.
+      }
+      recordingStartedAtRef.current = null;
+      return;
+    }
 
     recordingRef.current = recording;
     setIsRecording(true);
@@ -416,7 +456,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     stopMediaStream,
   ]);
 
-  const stopRecording = useCallback(async () => {
+  const stopRecording = useCallback(async (): Promise<boolean> => {
     if (Platform.OS === "web") {
       webStopRequestedRef.current = true;
       setIsRecording(false);
@@ -427,7 +467,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
         );
         pendingStreamRef.current = null;
         mediaStreamRef.current = null;
-        return;
+        return false;
       }
 
       const recorder = mediaRecorderRef.current;
@@ -436,54 +476,67 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       if (!recorder) {
         stopMediaStream(stream);
         resetWebRecordingState();
-        return;
+        return false;
       }
 
       if (recorder.state === "inactive") {
         stopMediaStream(stream);
         resetWebRecordingState();
-        return;
+        return false;
       }
 
-      try {
-        if (recorder.state === "recording") {
-          recorder.requestData();
+      return await new Promise<boolean>((resolve) => {
+        pendingStopResolveRef.current = resolve;
+
+        try {
+          if (recorder.state === "recording") {
+            recorder.requestData();
+          }
+          recorder.stop();
+        } catch {
+          pendingStopResolveRef.current = null;
+          resetWebRecordingState();
+          resolve(false);
+          return;
+        } finally {
+          stopMediaStream(stream);
+          if (mediaRecorderRef.current === recorder) {
+            mediaStreamRef.current = null;
+          }
+          pendingStreamRef.current = null;
         }
-        recorder.stop();
-      } catch {
-        resetWebRecordingState();
-      } finally {
-        stopMediaStream(stream);
-        if (mediaRecorderRef.current === recorder) {
-          mediaStreamRef.current = null;
-        }
-        pendingStreamRef.current = null;
-      }
-      return;
+      });
     }
 
     const recording = recordingRef.current;
+    nativeStopRequestedRef.current = true;
     if (!recording) {
       setIsRecording(false);
-      return;
+      nativeStopRequestedRef.current = false;
+      return false;
     }
 
     setIsRecording(false);
     recordingRef.current = null;
 
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
 
-    if (!uri) {
-      throw new Error("Recording failed: no audio captured.");
+      if (!uri) {
+        return false;
+      }
+
+      const audioBase64 = await readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+
+      const format = uri.endsWith(".caf") ? "caf" : "m4a";
+      deliverRecording(audioBase64, format);
+      return true;
+    } finally {
+      nativeStopRequestedRef.current = false;
     }
-
-    const audioBase64 = await readAsStringAsync(uri, {
-      encoding: "base64",
-    });
-
-    const format = uri.endsWith(".caf") ? "caf" : "m4a";
-    deliverRecording(audioBase64, format);
   }, [deliverRecording, resetWebRecordingState, stopMediaStream]);
 
   useEffect(() => {

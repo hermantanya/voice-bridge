@@ -1,0 +1,36 @@
+---
+description: Run npm run check before shipping any change — mandatory gate, no exceptions
+alwaysApply: true
+---
+
+# Gate before shipping
+
+Every code change is incomplete until the full gate passes. The user should never need to remind you to test.
+
+## Before saying work is done
+
+1. Run from repo root:
+   ```bash
+   npm run check
+   ```
+2. If it fails, fix the failure and run again until green.
+3. Only then report the change as complete.
+
+## What `npm run check` covers
+
+- `npm test` — server + mobile unit/integration tests
+- `npm run verify` — regression guards (settings layout, hold-to-talk, socket join, mic handling, etc.)
+- `npm run typecheck` — server TypeScript
+
+## When changing behavior
+
+- Add or update tests for new or modified behavior before shipping.
+- Prefer small, focused diffs over large refactors that bypass test coverage.
+- If something cannot be automated yet (e.g. cross-device Railway join), say so explicitly — do not claim it is fixed.
+
+## Do not
+
+- Ship changes without running the gate.
+- Skip the gate because the change "looks small."
+- Refactor working code without running the gate afterward.
+- Tell the user to run tests themselves unless they explicitly asked for instructions only.

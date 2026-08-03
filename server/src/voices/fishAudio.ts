@@ -69,6 +69,7 @@ export async function createPrivateFishVoice(params: {
   title: string;
   samplePath: string;
   description?: string;
+  sampleTranscript?: string;
 }): Promise<FishVoiceModel> {
   const sample = await readFile(params.samplePath);
   const ext = path.extname(params.samplePath).slice(1).toLowerCase() || "wav";
@@ -91,6 +92,9 @@ export async function createPrivateFishVoice(params: {
   form.append("enhance_audio_quality", "true");
   if (params.description) {
     form.append("description", params.description);
+  }
+  if (params.sampleTranscript) {
+    form.append("texts", params.sampleTranscript);
   }
   form.append(
     "voices",
@@ -127,6 +131,8 @@ export async function synthesizeFishSpeech(params: {
   text: string;
   referenceId: string;
   model?: FishTtsModel;
+  normalize?: boolean;
+  temperature?: number;
 }): Promise<Buffer> {
   const model = params.model ?? "s2.1-pro-free";
 
@@ -140,6 +146,10 @@ export async function synthesizeFishSpeech(params: {
       text: params.text,
       reference_id: params.referenceId,
       format: "mp3",
+      normalize: params.normalize ?? true,
+      ...(params.temperature !== undefined
+        ? { temperature: params.temperature }
+        : {}),
     }),
   });
 

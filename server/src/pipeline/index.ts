@@ -1,5 +1,5 @@
 import { transcribe } from "./stt.js";
-import { translate } from "./translate.js";
+import { translate, type SpeakerGender } from "./translate.js";
 import { synthesize } from "./tts.js";
 
 export type PipelineInput = {
@@ -7,6 +7,8 @@ export type PipelineInput = {
   sourceLang: string;
   targetLang: string;
   format?: string;
+  speakerGender?: SpeakerGender;
+  addresseeGender?: SpeakerGender;
 };
 
 export type PipelineResult = {
@@ -35,6 +37,8 @@ export async function runTranslationPipeline(
     sourceText,
     input.sourceLang,
     input.targetLang,
+    input.speakerGender,
+    input.addresseeGender,
   );
 
   const audio = await synthesize(translatedText);

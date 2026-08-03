@@ -11,8 +11,12 @@ import {
 
 import { SpeakingTimeStat } from "../components/SpeakingTimeStat";
 import { TranscriptPanel } from "../components/TranscriptPanel";
-import { languageLabel, type LanguageCode } from "../config";
+import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
 import type { TranscriptEntry } from "../hooks/useSocket";
+import {
+  canStartTalking,
+  getTurnLabel,
+} from "../session/sessionScreenState";
 import { formatSessionDuration } from "../utils/timeFormat";
 
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -35,7 +39,7 @@ type SessionScreenProps = {
   myBillableMs: number;
   partnerBillableMs: number;
   sessionStartedAt: number | null;
-  onStartRecording: () => void;
+  onStartRecording: (stillHolding: () => boolean) => Promise<void>;
   onStopRecording: () => void;
   onLeave: () => void;
 };
@@ -105,28 +109,21 @@ export function SessionScreen({
     turnParticipantId !== participantId &&
     (turnPhase === "speaking" || turnPhase === "processing");
 
-  const canTalk =
-    status === "connected" &&
-    participants > 1 &&
-    !isProcessing &&
-    !isRecording &&
-    (isOpenTurn || isMyTurn);
+  const canTalk = canStartTalking({
+    status,
+    participants,
+    isProcessing,
+    isRecording,
+    isOpenTurn,
+    isMyTurn,
+  });
 
-  const turnLabel = (() => {
-    if (participants < 2) {
-      return "Waiting for partner";
-    }
-    if (isProcessing) {
-      return "Translating...";
-    }
-    if (isMyTurn) {
-      return "You're speaking";
-    }
-    if (isOpenTurn) {
-      return "Ready: hold to talk";
-    }
-    return "Partner is speaking";
-  })();
+  const turnLabel = getTurnLabel({
+    participants,
+    isProcessing,
+    isMyTurn,
+    isOpenTurn,
+  });
 
   const turnColor = (() => {
     if (isProcessing) {
@@ -289,7 +286,12 @@ export function SessionScreen({
   }, [isRecording, onStopRecording]);
 
   const handleTalkStart = async () => {
-    if (!canTalk || holdingRef.current || isRecording) {
+    if (isRecording) {
+      await stopTalking();
+      return;
+    }
+
+    if (!canTalk || holdingRef.current) {
       return;
     }
 
@@ -297,7 +299,10 @@ export function SessionScreen({
 
     try {
       setRecordError(null);
-      await onStartRecording();
+      await onStartRecording(() => holdingRef.current);
+      if (!holdingRef.current) {
+        await onStopRecording();
+      }
     } catch (error) {
       holdingRef.current = false;
       setRecordError(
@@ -391,7 +396,10 @@ export function SessionScreen({
       </View>
 
       {participants < 2 ? (
-        <Text style={styles.hint}>Waiting for a second participant to join.</Text>
+        <Text style={styles.hint}>
+          Waiting for a second participant to join. Both devices must use the
+          same server ({SERVER_URL.replace(/^https?:\/\//, "")}).
+        </Text>
       ) : isMyTurn || isOpenTurn ? (
         <Text style={styles.hint} numberOfLines={2}>
           Hold to talk in {languageLabel(myLang)}.

@@ -5,7 +5,11 @@
   "private": true,
   "scripts": {
     "build": "npm ci --prefix server && npm run build --prefix server",
-    "start": "npm start --prefix server"
+    "start": "npm start --prefix server",
+    "test": "npm test --prefix server && npm test --prefix apps/mobile",
+    "verify": "npm run verify --prefix apps/mobile && npm run verify:regressions --prefix server",
+    "typecheck": "npm run typecheck --prefix server",
+    "check": "npm test && npm run verify && npm run typecheck"
   },
   "engines": {
     "node": ">=20"

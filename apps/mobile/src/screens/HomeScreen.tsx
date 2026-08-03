@@ -11,11 +11,13 @@ import {
   View,
 } from "react-native";
 
-import { languageLabel, type LanguageCode } from "../config";
+import { type LanguageCode, type SpeakerGender } from "../config";
+import { formatProfileBadge, canJoinRoom } from "../session/appState";
 
 type HomeScreenProps = {
   roomCode: string;
   myLang: LanguageCode;
+  speakerGender: SpeakerGender;
   onRoomCodeChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -25,13 +27,14 @@ type HomeScreenProps = {
 export function HomeScreen({
   roomCode,
   myLang,
+  speakerGender,
   onRoomCodeChange,
   onCreateRoom,
   onJoinRoom,
   onOpenSettings,
 }: HomeScreenProps) {
   const trimmedCode = roomCode.trim();
-  const canJoin = trimmedCode.length >= 4;
+  const canJoin = canJoinRoom(roomCode);
 
   const dismissKeyboard = useCallback(() => {
     Keyboard.dismiss();
@@ -77,10 +80,10 @@ export function HomeScreen({
           </Pressable>
 
           <Pressable style={styles.langBadge} onPress={handleOpenSettings}>
-            <Text style={styles.langBadgeText}>
-              My language: {languageLabel(myLang)}
+            <Text style={styles.langBadgeText} numberOfLines={1}>
+              {formatProfileBadge(myLang, speakerGender)}
             </Text>
-            <Text style={styles.langBadgeAction}>Change</Text>
+            <Text style={styles.langBadgeAction}>Settings</Text>
           </Pressable>
 
           <View style={styles.card}>
@@ -181,25 +184,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   langBadge: {
-    alignSelf: "center",
+    alignSelf: "stretch",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    gap: 8,
     backgroundColor: "#1e293b",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 24,
   },
   langBadgeText: {
+    flex: 1,
     color: "#cbd5e1",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
   },
   langBadgeAction: {
     color: "#60a5fa",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
+    flexShrink: 0,
   },
   card: {
     backgroundColor: "#1e293b",
