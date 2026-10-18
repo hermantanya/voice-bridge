@@ -28,10 +28,18 @@ test("validateProfilePatch accepts hearLang and speakerGender", () => {
   }
 });
 
-test("validateProfilePatch rejects voice sync in phase 1", () => {
+test("validateProfilePatch accepts elevenlabsVoiceId", () => {
   const result = validateProfilePatch({ elevenlabsVoiceId: "voice-123" });
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.match(result.error, /phase 2/i);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.patch.elevenlabsVoiceId, "voice-123");
+  }
+});
+
+test("validateProfilePatch clears empty elevenlabsVoiceId to null", () => {
+  const result = validateProfilePatch({ elevenlabsVoiceId: "  " });
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.patch.elevenlabsVoiceId, null);
   }
 });

@@ -48,7 +48,12 @@ export async function fetchProfile(
 
 export async function patchProfile(
   token: string,
-  patch: Partial<Pick<ServerUserProfile, "hearLang" | "speakerGender">>,
+  patch: Partial<
+    Pick<
+      ServerUserProfile,
+      "hearLang" | "speakerGender" | "elevenlabsVoiceId"
+    >
+  >,
 ): Promise<ServerProfileResponse> {
   let response: Response;
 

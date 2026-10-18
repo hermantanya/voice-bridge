@@ -89,6 +89,7 @@ export function useAuth() {
     async (patch: {
       hearLang?: LanguageCode;
       speakerGender?: SpeakerGender;
+      elevenlabsVoiceId?: string | null;
     }) => {
       const token = await loadAuthToken();
       if (!token) {

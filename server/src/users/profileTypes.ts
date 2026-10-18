@@ -37,7 +37,7 @@ export function isSpeakerGender(value: unknown): value is SpeakerGender {
 }
 
 export type ProfilePatch = Partial<
-  Pick<UserProfile, "hearLang" | "speakerGender">
+  Pick<UserProfile, "hearLang" | "speakerGender" | "elevenlabsVoiceId">
 >;
 
 export function validateProfilePatch(
@@ -65,10 +65,24 @@ export function validateProfilePatch(
   }
 
   if ("elevenlabsVoiceId" in record) {
-    return {
-      ok: false,
-      error: "elevenlabsVoiceId sync is not available yet (v1.4 phase 2)",
-    };
+    const raw = record.elevenlabsVoiceId;
+    if (raw === null) {
+      patch.elevenlabsVoiceId = null;
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        patch.elevenlabsVoiceId = null;
+      } else if (trimmed.length > 128) {
+        return { ok: false, error: "elevenlabsVoiceId is too long" };
+      } else {
+        patch.elevenlabsVoiceId = trimmed;
+      }
+    } else {
+      return {
+        ok: false,
+        error: "elevenlabsVoiceId must be a string or null",
+      };
+    }
   }
 
   if (Object.keys(patch).length === 0) {

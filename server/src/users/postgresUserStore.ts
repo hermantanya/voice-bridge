@@ -109,10 +109,16 @@ export class PostgresUserStore implements IUserStore {
       `UPDATE users
        SET hear_lang = $2,
            speaker_gender = $3,
+           elevenlabs_voice_id = $4,
            updated_at = NOW()
        WHERE id = $1
        RETURNING id, email, hear_lang, speaker_gender, elevenlabs_voice_id, created_at, updated_at`,
-      [userId, nextProfile.hearLang, nextProfile.speakerGender],
+      [
+        userId,
+        nextProfile.hearLang,
+        nextProfile.speakerGender,
+        nextProfile.elevenlabsVoiceId,
+      ],
     );
     const row = result.rows[0];
     return row ? rowToRecord(row) : null;

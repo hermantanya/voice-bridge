@@ -66,6 +66,64 @@ export default function App() {
     setSpeakerGender(auth.session.profile.speakerGender);
   }, [auth.loaded, auth.session, devicePrefsLoaded]);
 
+  useEffect(() => {
+    if (!auth.loaded || !voiceProfile.loaded || !auth.session) {
+      return;
+    }
+
+    const serverVoice = auth.session.profile.elevenlabsVoiceId;
+    const localVoice = voiceProfile.elevenlabsVoiceId;
+
+    void (async () => {
+      if (serverVoice) {
+        if (localVoice !== serverVoice) {
+          await voiceProfile.setElevenLabsVoiceId(serverVoice);
+        }
+        return;
+      }
+
+      if (localVoice) {
+        try {
+          await auth.updateProfile({ elevenlabsVoiceId: localVoice });
+        } catch (error) {
+          console.warn("Could not sync local voice to profile:", error);
+        }
+      }
+    })();
+  }, [
+    auth.loaded,
+    auth.session,
+    auth.updateProfile,
+    voiceProfile.elevenlabsVoiceId,
+    voiceProfile.loaded,
+    voiceProfile.setElevenLabsVoiceId,
+  ]);
+
+  const handleVoiceEnrolled = useCallback(
+    async (voiceId: string) => {
+      await voiceProfile.setElevenLabsVoiceId(voiceId);
+      if (auth.session) {
+        try {
+          await auth.updateProfile({ elevenlabsVoiceId: voiceId });
+        } catch (error) {
+          console.warn("Could not sync enrolled voice to profile:", error);
+        }
+      }
+    },
+    [auth.session, auth.updateProfile, voiceProfile.setElevenLabsVoiceId],
+  );
+
+  const handleRemoveVoice = useCallback(async () => {
+    await voiceProfile.removeElevenLabsVoice();
+    if (auth.session) {
+      try {
+        await auth.updateProfile({ elevenlabsVoiceId: null });
+      } catch (error) {
+        console.warn("Could not clear voice on profile:", error);
+      }
+    }
+  }, [auth.session, auth.updateProfile, voiceProfile.removeElevenLabsVoice]);
+
   const handleMyLangChange = useCallback(
     (lang: LanguageCode) => {
       setMyLang(lang);
@@ -207,7 +265,7 @@ export default function App() {
           myLang={myLang}
           speakerGender={speakerGender}
           existingVoiceId={voiceProfile.elevenlabsVoiceId}
-          onComplete={voiceProfile.setElevenLabsVoiceId}
+          onComplete={handleVoiceEnrolled}
           onBack={() => setScreen("settings")}
         />
       );
@@ -223,7 +281,7 @@ export default function App() {
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
           onOpenVoiceSetup={() => setScreen("voiceSetup")}
-          onRemoveVoice={voiceProfile.removeElevenLabsVoice}
+          onRemoveVoice={handleRemoveVoice}
           onBack={() => setScreen("home")}
           showMicrophoneSettings={Platform.OS === "web"}
           microphoneDevices={audio.inputDevices}
@@ -313,9 +371,11 @@ export default function App() {
     audio.stopRecording,
     handleLeaveSession,
     handleMyLangChange,
+    handleRemoveVoice,
     handleSignOut,
     handleSpeakerGenderChange,
     handleStartRecording,
+    handleVoiceEnrolled,
     auth.busy,
     auth.clearError,
     auth.error,
@@ -326,8 +386,6 @@ export default function App() {
     myLang,
     speakerGender,
     voiceProfile.elevenlabsVoiceId,
-    voiceProfile.removeElevenLabsVoice,
-    voiceProfile.setElevenLabsVoiceId,
     voiceProfile.voiceStatus,
     voiceProfile.loaded,
     roomCode,

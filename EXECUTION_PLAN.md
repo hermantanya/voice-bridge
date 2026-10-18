@@ -56,16 +56,16 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 **Server:**
 
-- [ ] Allow `elevenlabsVoiceId` in `PATCH /api/profile` (remove phase-1 rejection in `validateProfilePatch`)
-- [ ] On enroll success: PATCH profile with new `voice_id`; on remove: clear server field + delete ElevenLabs clone when appropriate
-- [ ] `GET /api/profile` already returns `elevenlabsVoiceId` — keep as source of truth when signed in
+- [x] Allow `elevenlabsVoiceId` in `PATCH /api/profile` (`validateProfilePatch` + Postgres `UPDATE`)
+- [x] On enroll / remove (signed-in): mobile PATCH profile; remove still deletes ElevenLabs clone via existing API
+- [x] `GET /api/profile` returns `elevenlabsVoiceId` — source of truth when signed in
 
 **Mobile / web:**
 
-- [ ] On sign-in: load profile voice id → merge with local AsyncStorage (server wins or newest-wins policy — document in code)
-- [ ] After enrollment / remove on signed-in user: sync to server via PATCH
-- [ ] Guests: keep device-local `useVoiceProfile` behavior unchanged
-- [ ] Settings copy: clarify signed-in vs guest voice storage
+- [x] On sign-in: server voice → local; if server empty but local enrolled → push local to server
+- [x] After enrollment / remove on signed-in user: sync to server via PATCH
+- [x] Guests: device-local `useVoiceProfile` unchanged
+- [x] Settings copy: signed-in vs guest voice storage
 
 **Deploy + verify:**
 

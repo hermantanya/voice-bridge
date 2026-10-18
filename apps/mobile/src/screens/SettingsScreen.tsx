@@ -91,8 +91,8 @@ export function SettingsScreen({
     <>
       <Text style={styles.title}>Account</Text>
       <Text style={styles.subtitle}>
-        Sign in to sync Translate to and gender across devices. Voice enrollment
-        stays on this device until a later update.
+        Sign in to sync Translate to, gender, and your enrolled voice across
+        devices. Guests keep voice enrollment on this device only.
       </Text>
 
       <View style={styles.card}>

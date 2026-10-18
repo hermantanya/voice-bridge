@@ -47,7 +47,7 @@ In **Language settings** → **Set up my voice**:
 
 Already enrolled? Use **Play voice preview** in Settings to hear your voice again without re-recording.
 
-Voice profile is stored **on this device** until v1.4 phase 2 (signed-in cloud sync — in progress). Re-enroll or remove from Settings anytime. Signed-in users already sync **Translate to** and **gender** across devices.
+When **signed in**, your enrolled voice syncs across devices (v1.4 phase 2). **Guests** keep voice enrollment on this device only. Re-enroll or remove from Settings anytime.
 
 ### 2. Start a session
 
