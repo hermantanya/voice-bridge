@@ -10,6 +10,8 @@ import { authRouter } from "./routes/auth.js";
 import { profileRouter } from "./routes/profile.js";
 import { translateRouter } from "./routes/translate.js";
 import { voicesRouter } from "./routes/voices.js";
+import { runMigrations } from "./db/migrate.js";
+import { getDatabaseUrl } from "./db/pool.js";
 import { clientIp, createRateLimiter } from "./rateLimit.js";
 
 dotenv.config();
@@ -95,6 +97,18 @@ app.get("/health", (_req, res) => {
 registerRateLimitMiddleware(io, socketRateLimits);
 registerSocketHandlers(io, socketRateLimits);
 
-httpServer.listen(PORT, () => {
-  console.log(`voice-bridge server listening on port ${PORT}`);
+async function start(): Promise<void> {
+  if (getDatabaseUrl()) {
+    await runMigrations();
+    console.log("PostgreSQL migrations applied (users table ready)");
+  }
+
+  httpServer.listen(PORT, () => {
+    console.log(`voice-bridge server listening on port ${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

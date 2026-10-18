@@ -32,7 +32,9 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 **Approach:** Email **OTP** (6-digit code, 10-minute TTL) + **HS256 JWT** sessions. No third-party auth SDK on mobile; `Authorization: Bearer` for profile APIs. Optional **Resend** for OTP email in production; dev/non-production may return `devCode` in JSON when `AUTH_DEV_RETURN_OTP=true` or `NODE_ENV !== production`.
 
-**Why this (minimal for Expo Go + Railway):** Avoids App Store OAuth setup, keeps server stateless except a small JSON user store on disk (`USER_DATA_DIR`), and matches “sign in on a second phone” without blocking phase 2 voice sync.
+**Why this (minimal for Expo Go + Railway):** Avoids App Store OAuth setup, keeps JWT sessions stateless on the server, and persists accounts in **Supabase Postgres** via `DATABASE_URL` (local dev without a DB falls back to JSON under `USER_DATA_DIR`). Matches “sign in on a second phone” without blocking phase 2 voice sync.
+
+**Storage:** Supabase Postgres (`DATABASE_URL` on Railway). Schema: `users` table (`id`, `email`, `hear_lang`, `speaker_gender`, `elevenlabs_voice_id`, timestamps); applied on server startup from `server/src/db/schema.sql`. Verify connectivity with `cd server && npm run db:ping`.
 
 **Profile schema (server):** `hearLang`, `speakerGender`, `elevenlabsVoiceId` (nullable, **read-only in phase 1** — PATCH rejects voice_id until phase 2).
 
