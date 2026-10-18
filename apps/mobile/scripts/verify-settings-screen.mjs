@@ -11,6 +11,8 @@ const source = readFileSync(
 const required = [
   ["<ScrollView", "scrollable settings layout"],
   ["Save and go back", "save button label"],
+  [">Back</Text>", "discard back button"],
+  ["handleSaveAndBack", "save applies draft settings"],
   ["showMicrophoneSettings", "microphone settings section"],
   ["My gender", "gender settings section"],
   ["My voice", "voice profile section"],

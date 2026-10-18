@@ -76,11 +76,42 @@ export function SettingsScreen({
   const [authCode, setAuthCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [authHint, setAuthHint] = useState<string | null>(null);
+  const [draftLang, setDraftLang] = useState(myLang);
+  const [draftGender, setDraftGender] = useState(speakerGender);
+  const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
+    selectedMicrophoneId,
+  );
 
   useEffect(() => {
     setPreviewText(null);
     setPreviewError(null);
-  }, [elevenlabsVoiceId, myLang, speakerGender]);
+  }, [elevenlabsVoiceId, draftLang, draftGender]);
+
+  const handleSaveAndBack = () => {
+    if (draftLang !== myLang) {
+      onMyLangChange(draftLang);
+    }
+    if (draftGender !== speakerGender) {
+      onSpeakerGenderChange(draftGender);
+    }
+    if (
+      showMicrophoneSettings &&
+      draftMicrophoneId &&
+      draftMicrophoneId !== selectedMicrophoneId
+    ) {
+      onMicrophoneChange?.(draftMicrophoneId);
+    }
+    onBack();
+  };
+
+  const handleDiscardAndBack = () => {
+    setAuthEmail("");
+    setAuthCode("");
+    setOtpSent(false);
+    setAuthHint(null);
+    onClearAuthError?.();
+    onBack();
+  };
   useEffect(() => {
     if (showMicrophoneSettings) {
       onRefreshMicrophones?.(true);
@@ -203,17 +234,18 @@ export function SettingsScreen({
 
       <Text style={styles.title}>Translate to</Text>
       <Text style={styles.subtitle}>
-        Translations you receive will be in this language.
+        Translations you receive will be in this language. Changes apply when
+        you tap Save and go back.
       </Text>
 
       <View style={styles.card}>
         {LANGUAGES.map((lang) => {
-          const active = lang.code === myLang;
+          const active = lang.code === draftLang;
           return (
             <Pressable
               key={lang.code}
               style={[styles.option, active && styles.optionActive]}
-              onPress={() => onMyLangChange(lang.code)}
+              onPress={() => setDraftLang(lang.code)}
             >
               <Text style={[styles.optionText, active && styles.optionTextActive]}>
                 {lang.label}
@@ -232,12 +264,12 @@ export function SettingsScreen({
 
       <View style={styles.card}>
         {SPEAKER_GENDERS.map((option) => {
-          const active = option.value === speakerGender;
+          const active = option.value === draftGender;
           return (
             <Pressable
               key={option.value}
               style={[styles.option, active && styles.optionActive]}
-              onPress={() => onSpeakerGenderChange(option.value)}
+              onPress={() => setDraftGender(option.value)}
             >
               <Text
                 style={[styles.optionText, active && styles.optionTextActive]}
@@ -297,8 +329,8 @@ export function SettingsScreen({
                     setPreviewError(null);
                     const result = await previewEnrolledVoice({
                       voiceId: elevenlabsVoiceId,
-                      language: myLang,
-                      gender: speakerGender,
+                      language: draftLang,
+                      gender: draftGender,
                     });
                     setPreviewText(result.previewText);
                     await playVoicePreviewAudio(result.previewAudioBase64);
@@ -356,12 +388,12 @@ export function SettingsScreen({
               </Text>
             ) : (
               microphoneDevices.map((device) => {
-                const active = device.deviceId === selectedMicrophoneId;
+                const active = device.deviceId === draftMicrophoneId;
                 return (
                   <Pressable
                     key={device.deviceId}
                     style={[styles.option, active && styles.optionActive]}
-                    onPress={() => onMicrophoneChange?.(device.deviceId)}
+                    onPress={() => setDraftMicrophoneId(device.deviceId)}
                   >
                     <Text
                       style={[
@@ -386,13 +418,19 @@ export function SettingsScreen({
           Each device should use the language spoken on that device.
         </Text>
         <Text style={styles.exampleText}>
-          Leave and rejoin the room after changing language, gender, or voice.
+          After saving language or gender, leave and rejoin the room so your
+          partner gets the update. Voice changes apply immediately.
         </Text>
       </View>
 
-      <Pressable style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>Save and go back</Text>
-      </Pressable>
+      <View style={styles.footerActions}>
+        <Pressable style={styles.discardBackButton} onPress={handleDiscardAndBack}>
+          <Text style={styles.discardBackButtonText}>Back</Text>
+        </Pressable>
+        <Pressable style={styles.saveBackButton} onPress={handleSaveAndBack}>
+          <Text style={styles.saveBackButtonText}>Save and go back</Text>
+        </Pressable>
+      </View>
     </>
   );
 
@@ -559,14 +597,30 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontSize: 15,
   },
-  backButton: {
+  footerActions: {
     marginTop: 24,
+    gap: 12,
+  },
+  discardBackButton: {
+    backgroundColor: "#1e293b",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#475569",
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  discardBackButtonText: {
+    color: "#e2e8f0",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  saveBackButton: {
     backgroundColor: "#3b82f6",
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: "center",
   },
-  backButtonText: {
+  saveBackButtonText: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
