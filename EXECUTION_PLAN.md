@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (v1.4 phase 1 in progress — auth + server profile; v1.3 shipped)
+**Last updated:** October 2026 (v1.4 **phase 2 in progress** — voice sync; phase 1 shipped; v1.3 shipped)
 
 ---
 
@@ -24,7 +24,7 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.1** — + RU, transcripts, speaking-time stats, web mic picker | ✅ Shipped |
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
 | **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
-| **v1.4** — App Store / PWA; signed-in profiles; voice sync | 📋 Next (phase 1: auth + profile in progress) |
+| **v1.4** — Signed-in profiles; voice sync; App Store / PWA | 🚧 In progress (**phase 2:** voice sync — **now**) |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -38,14 +38,58 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 **Profile schema (server):** `hearLang`, `speakerGender`, `elevenlabsVoiceId` (nullable, **read-only in phase 1** — PATCH rejects voice_id until phase 2).
 
-**Phase 1 done in repo:**
+**Phase 1 — shipped (October 2026):**
 
 - [x] `POST /api/auth/request-otp`, `POST /api/auth/verify-otp`
 - [x] `GET /api/profile`, `PATCH /api/profile` (hearLang, speakerGender)
 - [x] Mobile Settings → Account (sign-in / sign-out); signed-in users sync Translate-to + gender
-- [x] Guests unchanged: optional device-local prefs in AsyncStorage; voice enrollment still device-local
+- [x] Guests unchanged: optional device-local prefs in AsyncStorage
+- [x] Supabase Postgres on Railway (`DATABASE_URL`); TLS + non-fatal migration logging for deploy stability
+- [x] Mobile: **expo-audio** (Expo SDK 57 / Expo Go); sign-in error handling (no uncaught OTP failures)
+- [x] Interim prod testing: `AUTH_DEV_RETURN_OTP` on Railway (replace with real email before external beta)
 
-**Deferred to v1.4 phase 2:** Server-stored `elevenlabsVoiceId`, cross-device voice enrollment, App Store / PWA distribution work.
+---
+
+## v1.4 phase 2 — Voice sync across devices (**now**)
+
+**Goal:** After sign-in, **`elevenlabsVoiceId`** lives on the server profile and follows the user to every device (enroll once, join from phone or web with the same cloned voice).
+
+**Server:**
+
+- [ ] Allow `elevenlabsVoiceId` in `PATCH /api/profile` (remove phase-1 rejection in `validateProfilePatch`)
+- [ ] On enroll success: PATCH profile with new `voice_id`; on remove: clear server field + delete ElevenLabs clone when appropriate
+- [ ] `GET /api/profile` already returns `elevenlabsVoiceId` — keep as source of truth when signed in
+
+**Mobile / web:**
+
+- [ ] On sign-in: load profile voice id → merge with local AsyncStorage (server wins or newest-wins policy — document in code)
+- [ ] After enrollment / remove on signed-in user: sync to server via PATCH
+- [ ] Guests: keep device-local `useVoiceProfile` behavior unchanged
+- [ ] Settings copy: clarify signed-in vs guest voice storage
+
+**Deploy + verify:**
+
+- [ ] E2E: enroll on web, sign in on phone → same voice in session without re-enrolling
+- [ ] Bump to **v1.4.0** and update README / health version when phase 2 ships
+
+---
+
+## v1.4 pre-beta polish (**after phase 2, before inviting testers**)
+
+Complete voice sync first; then harden what external beta users will hit.
+
+- [ ] **Real email OTP:** Resend — `RESEND_API_KEY` + `AUTH_FROM_EMAIL` on Railway; set `AUTH_DEV_RETURN_OTP=false`
+- [ ] **CI green:** fix flaky `join-room.integration.test.ts` so GitHub `check` is trustworthy on every push
+- [ ] **Dogfood pass:** two devices + web with **signed-in** accounts — Translate to, gender, and **cloned voice** all consistent across devices
+- [ ] **Railway / Supabase checklist:** `DATABASE_URL`, `AUTH_JWT_SECRET`, rate limits, health smoke test documented for operators
+
+---
+
+## v1.4 beta distribution (**after pre-beta polish**)
+
+- [ ] Expo Go + **EAS** share link for a small tester group (no App Store / $99 yet)
+- [ ] Short tester doc: sign-in, enroll once, join room from two phones
+- [ ] **Later:** App Store / PWA packaging if we outgrow Expo Go
 
 ---
 
@@ -183,7 +227,7 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 
 | Version | Focus |
 |---|---|
-| **v1.4** | App Store / PWA; **signed-in user profiles**; sync `voice_id` across devices; migrate off device-only storage |
+| **v1.4** | Phase 1 ✅ profiles. Phase 2 🚧 voice sync. Then pre-beta polish → Expo/EAS beta → App Store / PWA later |
 | **v2.0** | Hands-free (VAD); pass-through languages; saved language prefs |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 

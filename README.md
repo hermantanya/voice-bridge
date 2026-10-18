@@ -47,7 +47,7 @@ In **Language settings** → **Set up my voice**:
 
 Already enrolled? Use **Play voice preview** in Settings to hear your voice again without re-recording.
 
-Voice profile is stored **on this device** until v1.4 (signed-in sync). Re-enroll or remove from Settings anytime.
+Voice profile is stored **on this device** until v1.4 phase 2 (signed-in cloud sync — in progress). Re-enroll or remove from Settings anytime. Signed-in users already sync **Translate to** and **gender** across devices.
 
 ### 2. Start a session
 
@@ -271,7 +271,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 | **v1.1** (done) | + Russian (EN ↔ HE ↔ RU); scrollable transcript; session + speaking time stats; web mic picker; merged room usage on server (for future billing) |
 | **v1.2** (done) | Real voice on translated speech (ElevenLabs IVC); Settings enrollment (~30s minimum); gender-aware Hebrew/Russian translation; device-local `voice_id`; preset fallback |
 | **v1.3** (done) | Auto-detect spoken language; **Translate to** UX; same-language transcript-only skip; Settings voice preview; join waits for voice profile load |
-| v1.4 | App Store / PWA; signed-in user profiles; sync voice across devices |
+| v1.4 | **Phase 1 (done):** sign-in + cloud profile. **Phase 2 (now):** sync cloned voice. **Then:** pre-beta polish (Resend, CI, dogfood) → small Expo beta → App Store / PWA later |
 
 ### Group and table (v2–v3)
 

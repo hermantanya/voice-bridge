@@ -111,11 +111,11 @@ if (!planCurrentShipped.test(executionPlan)) {
 
 const planNextMinor = minorTag({ major: semver.major, minor: semver.minor + 1 });
 const planNextRow = new RegExp(
-  String.raw`\*\*${planNextMinor}\*\*[^|\n]*\|\s*📋\s*Next`,
+  String.raw`\*\*${planNextMinor}\*\*[^|\n]*\|\s*(?:📋\s*Next|🚧\s*In progress)`,
 );
 if (!planNextRow.test(executionPlan)) {
   fail(
-    `EXECUTION_PLAN.md: expected **${planNextMinor}** as 📋 Next in current state table`,
+    `EXECUTION_PLAN.md: expected **${planNextMinor}** as 📋 Next or 🚧 In progress in current state table`,
   );
 }
 
