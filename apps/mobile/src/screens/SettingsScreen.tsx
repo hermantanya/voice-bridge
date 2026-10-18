@@ -38,8 +38,10 @@ type SettingsScreenProps = {
   signedInEmail?: string | null;
   authBusy?: boolean;
   authError?: string | null;
-  onRequestOtp?: (email: string) => Promise<{ devCode?: string; message?: string }>;
-  onVerifyOtp?: (email: string, code: string) => Promise<void>;
+  onRequestOtp?: (
+    email: string,
+  ) => Promise<{ devCode?: string; message?: string } | null>;
+  onVerifyOtp?: (email: string, code: string) => Promise<unknown>;
   onSignOut?: () => Promise<void>;
   onClearAuthError?: () => void;
 };
@@ -131,6 +133,9 @@ export function SettingsScreen({
                 onPress={() => {
                   void (async () => {
                     const result = await onRequestOtp!(authEmail.trim());
+                    if (!result) {
+                      return;
+                    }
                     setOtpSent(true);
                     setAuthHint(
                       result.devCode
@@ -170,7 +175,13 @@ export function SettingsScreen({
                   }
                   onPress={() => {
                     void (async () => {
-                      await onVerifyOtp!(authEmail.trim(), authCode);
+                      const profile = await onVerifyOtp!(
+                        authEmail.trim(),
+                        authCode,
+                      );
+                      if (!profile) {
+                        return;
+                      }
                       setOtpSent(false);
                       setAuthCode("");
                       setAuthHint(null);

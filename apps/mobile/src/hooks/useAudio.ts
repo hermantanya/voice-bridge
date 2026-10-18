@@ -1,8 +1,15 @@
-import { Audio } from "expo-av";
+import {
+  AudioModule,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import { playNativeMp3Base64 } from "../session/nativeMp3Playback";
 import {
   clearSavedMicDeviceId,
   enumerateMicrophones,
@@ -61,9 +68,11 @@ function getWebRecordingOptions(): { mimeType: string; format: string } {
   return { mimeType: "", format: "webm" };
 }
 
+type NativeRecorder = InstanceType<typeof AudioModule.AudioRecorder>;
+
 export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const recordingRef = useRef<NativeRecorder | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const pendingStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -242,7 +251,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return true;
     }
 
-    const permission = await Audio.requestPermissionsAsync();
+    const permission = await requestRecordingPermissionsAsync();
     const granted = permission.granted;
     setPermissionGranted(granted);
     return granted;
@@ -408,34 +417,32 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
     });
 
     if (nativeStopRequestedRef.current) {
       return;
     }
 
-    const recording = new Audio.Recording();
-    await recording.prepareToRecordAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY,
-    );
+    const recording = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+    await recording.prepareToRecordAsync();
 
     if (nativeStopRequestedRef.current) {
       try {
-        await recording.stopAndUnloadAsync();
+        await recording.stop();
       } catch {
         // Recording never started.
       }
       return;
     }
 
-    await recording.startAsync();
+    recording.record();
 
     if (nativeStopRequestedRef.current) {
       try {
-        await recording.stopAndUnloadAsync();
+        await recording.stop();
       } catch {
         // Ignore stop errors for cancelled starts.
       }
@@ -520,8 +527,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     recordingRef.current = null;
 
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
+      await recording.stop();
+      const uri = recording.uri;
 
       if (!uri) {
         return false;
@@ -606,28 +613,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
-    if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
-    }
-
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-    });
-
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: `data:audio/mp3;base64,${audioBase64}` },
-      { shouldPlay: true },
-    );
-
-    soundRef.current = sound;
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-        soundRef.current = null;
-      }
-    });
+    await playNativeMp3Base64(audioBase64, soundRef);
   }, []);
 
   return {

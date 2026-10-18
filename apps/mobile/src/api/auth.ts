@@ -31,7 +31,16 @@ export async function requestAuthOtp(email: string): Promise<{
   }>(response);
 
   if (!response.ok) {
-    throw new Error(body.error ?? `Sign-in request failed (${response.status})`);
+    const serverError = body.error ?? `Sign-in request failed (${response.status})`;
+    if (
+      response.status === 503 &&
+      serverError.toLowerCase().includes("email delivery")
+    ) {
+      throw new Error(
+        "Sign-in email is not set up on this server yet. The server admin needs to configure email delivery.",
+      );
+    }
+    throw new Error(serverError);
   }
 
   return { devCode: body.devCode, message: body.message };

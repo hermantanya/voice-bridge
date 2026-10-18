@@ -56,7 +56,7 @@ export function useAuth() {
       const message =
         signInError instanceof Error ? signInError.message : "Sign-in failed";
       setError(message);
-      throw signInError;
+      return null;
     } finally {
       setBusy(false);
     }
@@ -73,7 +73,7 @@ export function useAuth() {
           ? requestError.message
           : "Could not send code";
       setError(message);
-      throw requestError;
+      return null;
     } finally {
       setBusy(false);
     }

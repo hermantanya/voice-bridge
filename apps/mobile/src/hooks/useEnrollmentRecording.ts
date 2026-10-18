@@ -1,4 +1,9 @@
-import { Audio } from "expo-av";
+import {
+  AudioModule,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -50,8 +55,10 @@ function getWebRecordingOptions(): { mimeType: string; format: string } {
   return { mimeType: "", format: "webm" };
 }
 
+type NativeRecorder = InstanceType<typeof AudioModule.AudioRecorder>;
+
 export function useEnrollmentRecording() {
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingRef = useRef<NativeRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const webChunksRef = useRef<Blob[]>([]);
@@ -84,7 +91,7 @@ export function useEnrollmentRecording() {
       return;
     }
 
-    const permission = await Audio.requestPermissionsAsync();
+    const permission = await requestRecordingPermissionsAsync();
     if (!permission.granted) {
       throw new Error("Microphone permission is required.");
     }
@@ -121,16 +128,14 @@ export function useEnrollmentRecording() {
       return;
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
     });
 
-    const recording = new Audio.Recording();
-    await recording.prepareToRecordAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY,
-    );
-    await recording.startAsync();
+    const recording = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+    await recording.prepareToRecordAsync();
+    recording.record();
 
     recordingRef.current = recording;
     startedAtRef.current = Date.now();
@@ -195,8 +200,8 @@ export function useEnrollmentRecording() {
         return null;
       }
 
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
+      await recording.stop();
+      const uri = recording.uri;
       if (!uri) {
         return null;
       }

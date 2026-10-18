@@ -236,8 +236,12 @@ export default function App() {
           onRequestOtp={auth.requestOtp}
           onVerifyOtp={async (email, code) => {
             const profile = await auth.signInWithOtp(email, code);
+            if (!profile) {
+              return null;
+            }
             setMyLang(profile.profile.hearLang);
             setSpeakerGender(profile.profile.speakerGender);
+            return profile;
           }}
           onSignOut={handleSignOut}
           onClearAuthError={auth.clearError}
