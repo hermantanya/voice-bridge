@@ -4,6 +4,7 @@ import {
   Animated,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -355,11 +356,90 @@ export function SessionScreen({
 
   const showSessionStats = participants >= 2;
 
+  const talkButton = (
+    <Animated.View
+      style={[
+        styles.talkButtonWrap,
+        {
+          transform: [{ scale: buttonScale }],
+          opacity: isProcessing
+            ? buttonGlow.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.82, 1],
+              })
+            : 1,
+        },
+      ]}
+    >
+      <Pressable
+        style={[
+          styles.talkButton,
+          isRecording && styles.talkButtonActive,
+          isProcessing && styles.talkButtonProcessing,
+          !canTalk && !isRecording && !isProcessing && styles.talkButtonDisabled,
+        ]}
+        onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
+        onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
+        onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
+        onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
+        onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
+        disabled={Platform.OS !== "web" && !canTalk && !isRecording}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isRecording
+            ? "Listening, release to stop"
+            : isProcessing
+              ? "Translating"
+              : isMyTurn || isOpenTurn
+                ? "Hold to talk"
+                : "Partner is speaking"
+        }
+        accessibilityState={{ disabled: !canTalk && !isRecording }}
+      >
+        {isRecording ? (
+          <View style={styles.talkButtonContent}>
+            <Animated.View style={[styles.recordingDot, { opacity: buttonGlow }]} />
+            <Text style={styles.talkButtonText}>Listening...</Text>
+          </View>
+        ) : isProcessing ? (
+          <View style={styles.talkButtonContent}>
+            <ActivityIndicator color="#ffffff" />
+            <Text style={styles.talkButtonSubtext}>Translating...</Text>
+          </View>
+        ) : (
+          <Text style={styles.talkButtonText}>
+            {isMyTurn || isOpenTurn ? "Hold to talk" : "Partner is speaking"}
+          </Text>
+        )}
+      </Pressable>
+      {isRecording ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.talkButtonRing, { opacity: buttonGlow }]}
+        />
+      ) : null}
+    </Animated.View>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Session</Text>
         <Text style={styles.roomCodeInline}>{roomCode}</Text>
+      </View>
+
+      <View style={styles.talkSection}>
+        {talkButton}
+        {recordError ? <Text style={styles.error}>{recordError}</Text> : null}
+      </View>
+
+      <ScrollView
+        style={styles.mainScroll}
+        contentContainerStyle={styles.mainScrollContent}
+        scrollEnabled={!isRecording}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
         {showSessionStats ? (
           <View style={styles.statsCard}>
             <View style={styles.statRow}>
@@ -388,119 +468,65 @@ export function SessionScreen({
             />
           </View>
         ) : null}
-      </View>
 
-      <View style={styles.compactCard}>
-        <View style={styles.compactRow}>
-          <View style={styles.statusRow}>
-            <View
-              style={[styles.statusDot, { backgroundColor: statusColor(status) }]}
-            />
-            <Text style={styles.compactValue}>{statusLabel(status)}</Text>
+        <View style={styles.compactCard}>
+          <View style={styles.compactRow}>
+            <View style={styles.statusRow}>
+              <View
+                style={[styles.statusDot, { backgroundColor: statusColor(status) }]}
+              />
+              <Text style={styles.compactValue}>{statusLabel(status)}</Text>
+            </View>
+            <Text style={styles.compactMeta}>
+              {participants} participant{participants === 1 ? "" : "s"}
+            </Text>
           </View>
           <Text style={styles.compactMeta}>
-            {participants} participant{participants === 1 ? "" : "s"}
+            Translate to: {languageLabel(myLang)}
+            {partnerLang ? ` · Partner: ${languageLabel(partnerLang)}` : ""}
           </Text>
-        </View>
-        <Text style={styles.compactMeta}>
-          Translate to: {languageLabel(myLang)}
-          {partnerLang ? ` · Partner: ${languageLabel(partnerLang)}` : ""}
-        </Text>
-        <Text style={styles.compactMeta}>
-          Your voice: {voiceProfileLabel(voiceStatus)}
-          {loadingVoiceProfile ? " (loading…)" : ""}
-        </Text>
-        {lastPlaybackLabel ? (
-          <Text style={styles.compactMeta}>{lastPlaybackLabel}</Text>
-        ) : null}
-      </View>
-
-      <View style={[styles.turnCard, { borderColor: turnColor }]}>
-        <Animated.View
-          style={[styles.turnDot, { backgroundColor: turnColor, opacity: turnPulse }]}
-        />
-        <Text style={[styles.turnText, { color: turnColor }]}>{turnLabel}</Text>
-      </View>
-
-      {participants < 2 ? (
-        <Text style={styles.hint}>
-          Waiting for a second participant to join. Both devices must use the
-          same server ({SERVER_URL.replace(/^https?:\/\//, "")}).
-        </Text>
-      ) : isMyTurn || isOpenTurn ? (
-        <Text style={styles.hint} numberOfLines={2}>
-          Hold to talk.
-          {Platform.OS === "web"
-            ? " Pick Mac mic in Language settings."
-            : ""}
-        </Text>
-      ) : isProcessing ? (
-        <Text style={styles.hint}>Translating...</Text>
-      ) : (
-        <Text style={styles.hint}>Partner is speaking.</Text>
-      )}
-
-      <TranscriptPanel entries={transcript} />
-
-      <View style={styles.footer}>
-        <Animated.View
-          style={[
-            styles.talkButtonWrap,
-            {
-              transform: [{ scale: buttonScale }],
-              opacity: isProcessing ? buttonGlow.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.82, 1],
-              }) : 1,
-            },
-          ]}
-        >
-          <Pressable
-            style={[
-              styles.talkButton,
-              isRecording && styles.talkButtonActive,
-              isProcessing && styles.talkButtonProcessing,
-              !canTalk && !isRecording && !isProcessing && styles.talkButtonDisabled,
-            ]}
-            onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
-            onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
-            onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
-            onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
-            onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
-            disabled={Platform.OS !== "web" && !canTalk && !isRecording}
-            accessibilityState={{ disabled: !canTalk && !isRecording }}
-          >
-            {isRecording ? (
-              <View style={styles.talkButtonContent}>
-                <Animated.View style={[styles.recordingDot, { opacity: buttonGlow }]} />
-                <Text style={styles.talkButtonText}>Listening...</Text>
-              </View>
-            ) : isProcessing ? (
-              <View style={styles.talkButtonContent}>
-                <ActivityIndicator color="#ffffff" />
-                <Text style={styles.talkButtonSubtext}>Translating...</Text>
-              </View>
-            ) : (
-              <Text style={styles.talkButtonText}>
-                {isMyTurn || isOpenTurn ? "Hold to talk" : "Partner is speaking"}
-              </Text>
-            )}
-          </Pressable>
-          {isRecording ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.talkButtonRing, { opacity: buttonGlow }]}
-            />
+          <Text style={styles.compactMeta}>
+            Your voice: {voiceProfileLabel(voiceStatus)}
+            {loadingVoiceProfile ? " (loading…)" : ""}
+          </Text>
+          {lastPlaybackLabel ? (
+            <Text style={styles.compactMeta}>{lastPlaybackLabel}</Text>
           ) : null}
-        </Animated.View>
+        </View>
 
-        {recordError ? <Text style={styles.error}>{recordError}</Text> : null}
+        <View style={[styles.turnCard, { borderColor: turnColor }]}>
+          <Animated.View
+            style={[styles.turnDot, { backgroundColor: turnColor, opacity: turnPulse }]}
+          />
+          <Text style={[styles.turnText, { color: turnColor }]}>{turnLabel}</Text>
+        </View>
+
+        {participants < 2 ? (
+          <Text style={styles.hint}>
+            Waiting for a second participant to join. Both devices must use the
+            same server ({SERVER_URL.replace(/^https?:\/\//, "")}).
+          </Text>
+        ) : isMyTurn || isOpenTurn ? (
+          <Text style={styles.hint} numberOfLines={2}>
+            Hold to talk.
+            {Platform.OS === "web"
+              ? " Pick Mac mic in Language settings."
+              : ""}
+          </Text>
+        ) : isProcessing ? (
+          <Text style={styles.hint}>Translating...</Text>
+        ) : (
+          <Text style={styles.hint}>Partner is speaking.</Text>
+        )}
+
+        <TranscriptPanel entries={transcript} embedded />
+
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
         <Pressable style={styles.leaveButton} onPress={onLeave}>
           <Text style={styles.leaveButtonText}>Leave session</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -514,7 +540,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   header: {
-    marginBottom: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  talkSection: {
+    marginBottom: 12,
     gap: 8,
   },
   title: {
@@ -534,7 +564,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 8,
-    marginTop: 4,
+    marginBottom: 12,
   },
   statRow: {
     flexDirection: "row",
@@ -580,8 +610,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mainScrollContent: {
-    paddingBottom: 12,
-    flexGrow: 1,
+    paddingBottom: 24,
+    gap: 0,
   },
   compactCard: {
     backgroundColor: "#1e293b",
@@ -669,10 +699,6 @@ const styles = StyleSheet.create({
   turnText: {
     fontSize: 16,
     fontWeight: "700",
-  },
-  footer: {
-    paddingTop: 12,
-    gap: 8,
   },
   talkButtonWrap: {
     position: "relative",

@@ -32,6 +32,23 @@ const checks = [
     required: ["getTurnLabel", "canStartTalking", "stillHolding", "isRecording"],
   },
   {
+    name: "session screen scrollable with top hold-to-talk",
+    file: "src/screens/SessionScreen.tsx",
+    required: [
+      "<ScrollView",
+      "scrollEnabled={!isRecording}",
+      "styles.talkSection",
+      "Hold to talk",
+      'embedded',
+    ],
+    forbidden: ["styles.footer"],
+  },
+  {
+    name: "transcript panel supports embedded scroll parent",
+    file: "src/components/TranscriptPanel.tsx",
+    required: ["embedded?: boolean", "containerEmbedded", "embeddedContent"],
+  },
+  {
     name: "home screen profile badge",
     file: "src/screens/HomeScreen.tsx",
     required: ["formatProfileBadge", "canJoinRoom", "voiceStatus", "voiceStatusDot"],

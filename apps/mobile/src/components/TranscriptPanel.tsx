@@ -6,6 +6,8 @@ import { formatRelativeTime } from "../utils/timeFormat";
 
 type TranscriptPanelProps = {
   entries: TranscriptEntry[];
+  /** Render inline for parent ScrollView instead of nested scroll. */
+  embedded?: boolean;
 };
 
 function TranscriptCell({
@@ -32,7 +34,35 @@ function TranscriptCell({
   );
 }
 
-export function TranscriptPanel({ entries }: TranscriptPanelProps) {
+function TranscriptRows({
+  entries,
+  nowMs,
+}: {
+  entries: TranscriptEntry[];
+  nowMs: number;
+}) {
+  return (
+    <>
+      {entries.map((entry) => (
+        <View key={entry.id} style={styles.row}>
+          <View style={[styles.column, styles.leftColumn]}>
+            {entry.direction === "received" ? (
+              <TranscriptCell entry={entry} nowMs={nowMs} align="left" />
+            ) : null}
+          </View>
+          <View style={styles.divider} />
+          <View style={[styles.column, styles.rightColumn]}>
+            {entry.direction === "sent" ? (
+              <TranscriptCell entry={entry} nowMs={nowMs} align="right" />
+            ) : null}
+          </View>
+        </View>
+      ))}
+    </>
+  );
+}
+
+export function TranscriptPanel({ entries, embedded = false }: TranscriptPanelProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -47,23 +77,40 @@ export function TranscriptPanel({ entries }: TranscriptPanelProps) {
   }, []);
 
   useEffect(() => {
+    if (embedded) {
+      return;
+    }
     scrollRef.current?.scrollToEnd({ animated: true });
-  }, [entries.length]);
+  }, [embedded, entries.length]);
 
   if (entries.length === 0) {
     return null;
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Transcript</Text>
-        <View style={styles.columnHeaders}>
-          <Text style={[styles.columnHeader, styles.leftHeader]}>Others</Text>
-          <Text style={[styles.columnHeader, styles.rightHeader]}>You</Text>
+  const header = (
+    <View style={styles.headerRow}>
+      <Text style={styles.title}>Transcript</Text>
+      <View style={styles.columnHeaders}>
+        <Text style={[styles.columnHeader, styles.leftHeader]}>Others</Text>
+        <Text style={[styles.columnHeader, styles.rightHeader]}>You</Text>
+      </View>
+    </View>
+  );
+
+  if (embedded) {
+    return (
+      <View style={[styles.container, styles.containerEmbedded]}>
+        {header}
+        <View style={styles.embeddedContent}>
+          <TranscriptRows entries={entries} nowMs={nowMs} />
         </View>
       </View>
+    );
+  }
 
+  return (
+    <View style={styles.container}>
+      {header}
       <ScrollView
         ref={scrollRef}
         style={styles.scrollArea}
@@ -71,21 +118,7 @@ export function TranscriptPanel({ entries }: TranscriptPanelProps) {
         nestedScrollEnabled
         showsVerticalScrollIndicator
       >
-        {entries.map((entry) => (
-          <View key={entry.id} style={styles.row}>
-            <View style={[styles.column, styles.leftColumn]}>
-              {entry.direction === "received" ? (
-                <TranscriptCell entry={entry} nowMs={nowMs} align="left" />
-              ) : null}
-            </View>
-            <View style={styles.divider} />
-            <View style={[styles.column, styles.rightColumn]}>
-              {entry.direction === "sent" ? (
-                <TranscriptCell entry={entry} nowMs={nowMs} align="right" />
-              ) : null}
-            </View>
-          </View>
-        ))}
+        <TranscriptRows entries={entries} nowMs={nowMs} />
       </ScrollView>
     </View>
   );
@@ -99,6 +132,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     minHeight: 160,
+  },
+  containerEmbedded: {
+    flex: 0,
+    flexGrow: 0,
+    minHeight: undefined,
+  },
+  embeddedContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 16,
+    gap: 10,
   },
   headerRow: {
     paddingHorizontal: 16,
