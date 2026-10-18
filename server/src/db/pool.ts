@@ -1,5 +1,7 @@
 import pg from "pg";
 
+import { createPgPoolConfig } from "./pgConfig.js";
+
 let pool: pg.Pool | null = null;
 
 export function getDatabaseUrl(): string | null {
@@ -14,7 +16,7 @@ export function getPgPool(): pg.Pool {
   }
 
   if (!pool) {
-    pool = new pg.Pool({ connectionString });
+    pool = new pg.Pool(createPgPoolConfig(connectionString));
   }
   return pool;
 }

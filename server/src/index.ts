@@ -98,17 +98,32 @@ registerRateLimitMiddleware(io, socketRateLimits);
 registerSocketHandlers(io, socketRateLimits);
 
 async function start(): Promise<void> {
-  if (getDatabaseUrl()) {
-    await runMigrations();
-    console.log("PostgreSQL migrations applied (users table ready)");
+  await new Promise<void>((resolve, reject) => {
+    httpServer.listen(PORT, () => {
+      console.log(`voice-bridge server listening on port ${PORT}`);
+      resolve();
+    });
+    httpServer.once("error", reject);
+  });
+
+  if (!getDatabaseUrl()) {
+    return;
   }
 
-  httpServer.listen(PORT, () => {
-    console.log(`voice-bridge server listening on port ${PORT}`);
-  });
+  try {
+    await runMigrations();
+    console.log("PostgreSQL migrations applied (users table ready)");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("PostgreSQL migration failed (sign-in disabled until fixed):", message);
+    console.error(
+      "Hint: On Railway, try Supabase Session pooler (port 5432) if Transaction (6543) fails, enable SSL, URL-encode password, or use Supabase IPv4 add-on.",
+    );
+  }
 }
 
 start().catch((err) => {
-  console.error("Failed to start server:", err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("Failed to start server:", message);
   process.exit(1);
 });

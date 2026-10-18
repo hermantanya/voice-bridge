@@ -227,8 +227,8 @@ test("concurrent joins still converge to two participants", async () => {
 
     if (firstJoined.participants < 2) {
       const firstUpdate = await Promise.race([
-        waitForEvent<JoinedRoomPayload>(first, "participant_joined"),
-        waitForEvent<JoinedRoomPayload>(first, "participants_sync"),
+        waitForEvent<JoinedRoomPayload>(first, "participant_joined", 10_000),
+        waitForEvent<JoinedRoomPayload>(first, "participants_sync", 10_000),
       ]);
       assert.equal(firstUpdate.participants, 2);
     }

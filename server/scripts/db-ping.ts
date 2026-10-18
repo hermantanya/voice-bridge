@@ -10,6 +10,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
+import { createPgPoolConfig } from "../src/db/pgConfig.js";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(scriptDir, "../.env") });
 
@@ -20,7 +22,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const client = new pg.Client({ connectionString });
+  const client = new pg.Client(createPgPoolConfig(connectionString));
   try {
     await client.connect();
     const result = await client.query<{ ok: number }>("SELECT 1 AS ok");
