@@ -29,7 +29,8 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'",
     "verify:settings": "node scripts/verify-settings-screen.mjs",
     "verify:regressions": "node scripts/verify-regressions.mjs",
-    "verify": "npm run verify:settings && npm run verify:regressions"
+    "verify:docs": "node scripts/verify-docs.mjs",
+    "verify": "npm run verify:settings && npm run verify:regressions && npm run verify:docs"
   },
   "private": true
 }
