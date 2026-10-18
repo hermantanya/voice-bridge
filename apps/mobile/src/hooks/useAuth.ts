@@ -85,6 +85,23 @@ export function useAuth() {
     setError(null);
   }, []);
 
+  const refreshSession = useCallback(async (): Promise<ServerProfileResponse | null> => {
+    const token = await loadAuthToken();
+    if (!token) {
+      setSession(null);
+      return null;
+    }
+
+    try {
+      const profile = await fetchProfile(token);
+      setSession(profile);
+      return profile;
+    } catch (refreshError) {
+      console.warn("Could not refresh profile:", refreshError);
+      return null;
+    }
+  }, []);
+
   const updateProfile = useCallback(
     async (patch: {
       hearLang?: LanguageCode;
@@ -111,6 +128,7 @@ export function useAuth() {
     requestOtp,
     signInWithOtp,
     signOut,
+    refreshSession,
     updateProfile,
     clearError: () => setError(null),
   };

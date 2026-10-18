@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, SafeAreaView, StyleSheet } from "react-native";
+import { AppState, Platform, SafeAreaView, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import type { LanguageCode, SpeakerGender } from "./src/config";
@@ -13,6 +13,7 @@ import {
 } from "./src/session/devicePrefsStorage";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
+import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
@@ -71,33 +72,56 @@ export default function App() {
       return;
     }
 
-    const serverVoice = auth.session.profile.elevenlabsVoiceId;
-    const localVoice = voiceProfile.elevenlabsVoiceId;
-
-    void (async () => {
-      if (serverVoice) {
-        if (localVoice !== serverVoice) {
-          await voiceProfile.setElevenLabsVoiceId(serverVoice);
-        }
-        return;
-      }
-
-      if (localVoice) {
-        try {
-          await auth.updateProfile({ elevenlabsVoiceId: localVoice });
-        } catch (error) {
-          console.warn("Could not sync local voice to profile:", error);
-        }
-      }
-    })();
+    void applyServerProfileVoice(
+      auth.session.profile.elevenlabsVoiceId,
+      voiceProfile.elevenlabsVoiceId,
+      voiceProfile.setElevenLabsVoiceId,
+    );
   }, [
     auth.loaded,
+    auth.session?.profile.elevenlabsVoiceId,
     auth.session,
-    auth.updateProfile,
     voiceProfile.elevenlabsVoiceId,
     voiceProfile.loaded,
     voiceProfile.setElevenLabsVoiceId,
   ]);
+
+  useEffect(() => {
+    if (!auth.signedIn) {
+      return;
+    }
+
+    const refreshFromServer = () => {
+      void auth.refreshSession();
+    };
+
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        refreshFromServer();
+      }
+    });
+
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") {
+          refreshFromServer();
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      return () => {
+        appStateSub.remove();
+        document.removeEventListener("visibilitychange", onVisibility);
+      };
+    }
+
+    return () => appStateSub.remove();
+  }, [auth.refreshSession, auth.signedIn]);
+
+  useEffect(() => {
+    if (screen === "settings" && auth.signedIn) {
+      void auth.refreshSession();
+    }
+  }, [auth.refreshSession, auth.signedIn, screen]);
 
   const handleVoiceEnrolled = useCallback(
     async (voiceId: string) => {
@@ -299,6 +323,18 @@ export default function App() {
             }
             setMyLang(profile.profile.hearLang);
             setSpeakerGender(profile.profile.speakerGender);
+            if (
+              !profile.profile.elevenlabsVoiceId &&
+              voiceProfile.elevenlabsVoiceId
+            ) {
+              try {
+                await auth.updateProfile({
+                  elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
+                });
+              } catch (error) {
+                console.warn("Could not upload local voice on sign-in:", error);
+              }
+            }
             return profile;
           }}
           onSignOut={handleSignOut}
