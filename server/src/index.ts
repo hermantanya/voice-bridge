@@ -6,6 +6,8 @@ import { Server } from "socket.io";
 
 import { registerSocketHandlers } from "./ws/handler.js";
 import { createSocketRateLimits, registerRateLimitMiddleware } from "./ws/rateLimit.js";
+import { authRouter } from "./routes/auth.js";
+import { profileRouter } from "./routes/profile.js";
 import { translateRouter } from "./routes/translate.js";
 import { voicesRouter } from "./routes/voices.js";
 import { clientIp, createRateLimiter } from "./rateLimit.js";
@@ -56,6 +58,9 @@ app.use(
   express.raw({ type: "*/*", limit: "15mb" }),
   translateRouter,
 );
+
+app.use("/api/auth", authRouter);
+app.use("/api/profile", profileRouter);
 
 app.use(
   "/api/voices",

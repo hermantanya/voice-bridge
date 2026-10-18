@@ -4,8 +4,13 @@ import { StatusBar } from "expo-status-bar";
 
 import type { LanguageCode, SpeakerGender } from "./src/config";
 import { useAudio } from "./src/hooks/useAudio";
+import { useAuth } from "./src/hooks/useAuth";
 import { useSocket } from "./src/hooks/useSocket";
 import { useVoiceProfile } from "./src/hooks/useVoiceProfile";
+import {
+  loadDevicePrefs,
+  saveDevicePrefs,
+} from "./src/session/devicePrefsStorage";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -22,7 +27,9 @@ export default function App() {
   const [myLang, setMyLang] = useState<LanguageCode>("en");
   const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
   const [homeResetKey, setHomeResetKey] = useState(0);
+  const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
 
+  const auth = useAuth();
   const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
   const sessionReady = inSession && voiceProfile.loaded;
@@ -30,6 +37,74 @@ export default function App() {
     async () => {},
   );
   const holdStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadDevicePrefs().then((prefs) => {
+      if (cancelled || !prefs) {
+        if (!cancelled) {
+          setDevicePrefsLoaded(true);
+        }
+        return;
+      }
+      setMyLang(prefs.hearLang);
+      setSpeakerGender(prefs.speakerGender);
+      setDevicePrefsLoaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!auth.loaded || !devicePrefsLoaded || !auth.session) {
+      return;
+    }
+    setMyLang(auth.session.profile.hearLang);
+    setSpeakerGender(auth.session.profile.speakerGender);
+  }, [auth.loaded, auth.session, devicePrefsLoaded]);
+
+  const handleMyLangChange = useCallback(
+    (lang: LanguageCode) => {
+      setMyLang(lang);
+      if (auth.session) {
+        void auth.updateProfile({ hearLang: lang }).catch((error) => {
+          console.warn("Could not sync hearLang to profile:", error);
+        });
+        return;
+      }
+      void saveDevicePrefs({ hearLang: lang, speakerGender });
+    },
+    [auth.session, auth.updateProfile, speakerGender],
+  );
+
+  const handleSpeakerGenderChange = useCallback(
+    (gender: SpeakerGender) => {
+      setSpeakerGender(gender);
+      if (auth.session) {
+        void auth.updateProfile({ speakerGender: gender }).catch((error) => {
+          console.warn("Could not sync speakerGender to profile:", error);
+        });
+        return;
+      }
+      void saveDevicePrefs({ hearLang: myLang, speakerGender: gender });
+    },
+    [auth.session, auth.updateProfile, myLang],
+  );
+
+  const handleSignOut = useCallback(async () => {
+    await auth.signOut();
+    const prefs = await loadDevicePrefs();
+    if (prefs) {
+      setMyLang(prefs.hearLang);
+      setSpeakerGender(prefs.speakerGender);
+    } else {
+      setMyLang("en");
+      setSpeakerGender("female");
+    }
+  }, [auth.signOut]);
 
   const handleIncomingTranslation = useCallback(
     (result: { audioBase64: string }) => {
@@ -142,9 +217,9 @@ export default function App() {
       return (
         <SettingsScreen
           myLang={myLang}
-          onMyLangChange={setMyLang}
+          onMyLangChange={handleMyLangChange}
           speakerGender={speakerGender}
-          onSpeakerGenderChange={setSpeakerGender}
+          onSpeakerGenderChange={handleSpeakerGenderChange}
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
           onOpenVoiceSetup={() => setScreen("voiceSetup")}
@@ -155,6 +230,17 @@ export default function App() {
           selectedMicrophoneId={audio.selectedDeviceId}
           onMicrophoneChange={audio.setSelectedDeviceId}
           onRefreshMicrophones={audio.refreshInputDevices}
+          signedInEmail={auth.session?.email ?? null}
+          authBusy={auth.busy}
+          authError={auth.error}
+          onRequestOtp={auth.requestOtp}
+          onVerifyOtp={async (email, code) => {
+            const profile = await auth.signInWithOtp(email, code);
+            setMyLang(profile.profile.hearLang);
+            setSpeakerGender(profile.profile.speakerGender);
+          }}
+          onSignOut={handleSignOut}
+          onClearAuthError={auth.clearError}
         />
       );
     }
@@ -222,7 +308,16 @@ export default function App() {
     audio.setSelectedDeviceId,
     audio.stopRecording,
     handleLeaveSession,
+    handleMyLangChange,
+    handleSignOut,
+    handleSpeakerGenderChange,
     handleStartRecording,
+    auth.busy,
+    auth.clearError,
+    auth.error,
+    auth.requestOtp,
+    auth.session?.email,
+    auth.signInWithOtp,
     homeResetKey,
     myLang,
     speakerGender,

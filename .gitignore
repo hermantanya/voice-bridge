@@ -14,6 +14,8 @@ apps/mobile/.env
 # Build output
 dist/
 server/dist/
+server/data/
+server/tmp/
 .expo/
 apps/mobile/.expo/
 

@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -34,6 +35,13 @@ type SettingsScreenProps = {
   selectedMicrophoneId?: string | null;
   onMicrophoneChange?: (deviceId: string) => void;
   onRefreshMicrophones?: (requestLabels?: boolean) => void;
+  signedInEmail?: string | null;
+  authBusy?: boolean;
+  authError?: string | null;
+  onRequestOtp?: (email: string) => Promise<{ devCode?: string; message?: string }>;
+  onVerifyOtp?: (email: string, code: string) => Promise<void>;
+  onSignOut?: () => Promise<void>;
+  onClearAuthError?: () => void;
 };
 
 export function SettingsScreen({
@@ -51,10 +59,21 @@ export function SettingsScreen({
   selectedMicrophoneId = null,
   onMicrophoneChange,
   onRefreshMicrophones,
+  signedInEmail = null,
+  authBusy = false,
+  authError = null,
+  onRequestOtp,
+  onVerifyOtp,
+  onSignOut,
+  onClearAuthError,
 }: SettingsScreenProps) {
   const [previewText, setPreviewText] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authCode, setAuthCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [authHint, setAuthHint] = useState<string | null>(null);
 
   useEffect(() => {
     setPreviewText(null);
@@ -68,6 +87,109 @@ export function SettingsScreen({
 
   const content = (
     <>
+      <Text style={styles.title}>Account</Text>
+      <Text style={styles.subtitle}>
+        Sign in to sync Translate to and gender across devices. Voice enrollment
+        stays on this device until a later update.
+      </Text>
+
+      <View style={styles.card}>
+        {signedInEmail ? (
+          <>
+            <Text style={styles.statusTitle}>Signed in</Text>
+            <Text style={styles.statusHint}>{signedInEmail}</Text>
+            <Pressable
+              style={styles.secondaryButton}
+              disabled={authBusy}
+              onPress={() => {
+                void onSignOut?.();
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Sign out</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <TextInput
+              style={styles.textInput}
+              value={authEmail}
+              onChangeText={(value) => {
+                setAuthEmail(value);
+                onClearAuthError?.();
+              }}
+              placeholder="Email"
+              placeholderTextColor="#64748b"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              editable={!authBusy}
+            />
+            {!otpSent ? (
+              <Pressable
+                style={styles.setupButton}
+                disabled={authBusy || !authEmail.trim() || !onRequestOtp}
+                onPress={() => {
+                  void (async () => {
+                    const result = await onRequestOtp!(authEmail.trim());
+                    setOtpSent(true);
+                    setAuthHint(
+                      result.devCode
+                        ? `Dev code: ${result.devCode}`
+                        : (result.message ?? "Check your email for a code."),
+                    );
+                  })();
+                }}
+              >
+                {authBusy ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.setupButtonText}>Send sign-in code</Text>
+                )}
+              </Pressable>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.textInput}
+                  value={authCode}
+                  onChangeText={(value) => {
+                    setAuthCode(value.replace(/\D/g, "").slice(0, 6));
+                    onClearAuthError?.();
+                  }}
+                  placeholder="6-digit code"
+                  placeholderTextColor="#64748b"
+                  keyboardType="number-pad"
+                  editable={!authBusy}
+                />
+                {authHint ? (
+                  <Text style={styles.statusHint}>{authHint}</Text>
+                ) : null}
+                <Pressable
+                  style={styles.setupButton}
+                  disabled={
+                    authBusy || authCode.length !== 6 || !onVerifyOtp
+                  }
+                  onPress={() => {
+                    void (async () => {
+                      await onVerifyOtp!(authEmail.trim(), authCode);
+                      setOtpSent(false);
+                      setAuthCode("");
+                      setAuthHint(null);
+                    })();
+                  }}
+                >
+                  {authBusy ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.setupButtonText}>Verify and sign in</Text>
+                  )}
+                </Pressable>
+              </>
+            )}
+          </>
+        )}
+        {authError ? <Text style={styles.previewError}>{authError}</Text> : null}
+      </View>
+
       <Text style={styles.title}>Translate to</Text>
       <Text style={styles.subtitle}>
         Translations you receive will be in this language.
@@ -437,5 +559,15 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  textInput: {
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#334155",
+    color: "#f8fafc",
+    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
 });

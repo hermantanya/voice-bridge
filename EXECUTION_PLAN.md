@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** August 2026 (v1.3 shipped — auto-detect language)
+**Last updated:** October 2026 (v1.4 phase 1 in progress — auth + server profile; v1.3 shipped)
 
 ---
 
@@ -24,9 +24,26 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.1** — + RU, transcripts, speaking-time stats, web mic picker | ✅ Shipped |
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
 | **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
-| **v1.4** — App Store / PWA; signed-in profiles; voice sync | 📋 Next |
+| **v1.4** — App Store / PWA; signed-in profiles; voice sync | 📋 Next (phase 1: auth + profile in progress) |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
+
+### v1.4 phase 1 — Auth choice (October 2026)
+
+**Approach:** Email **OTP** (6-digit code, 10-minute TTL) + **HS256 JWT** sessions. No third-party auth SDK on mobile; `Authorization: Bearer` for profile APIs. Optional **Resend** for OTP email in production; dev/non-production may return `devCode` in JSON when `AUTH_DEV_RETURN_OTP=true` or `NODE_ENV !== production`.
+
+**Why this (minimal for Expo Go + Railway):** Avoids App Store OAuth setup, keeps server stateless except a small JSON user store on disk (`USER_DATA_DIR`), and matches “sign in on a second phone” without blocking phase 2 voice sync.
+
+**Profile schema (server):** `hearLang`, `speakerGender`, `elevenlabsVoiceId` (nullable, **read-only in phase 1** — PATCH rejects voice_id until phase 2).
+
+**Phase 1 done in repo:**
+
+- [x] `POST /api/auth/request-otp`, `POST /api/auth/verify-otp`
+- [x] `GET /api/profile`, `PATCH /api/profile` (hearLang, speakerGender)
+- [x] Mobile Settings → Account (sign-in / sign-out); signed-in users sync Translate-to + gender
+- [x] Guests unchanged: optional device-local prefs in AsyncStorage; voice enrollment still device-local
+
+**Deferred to v1.4 phase 2:** Server-stored `elevenlabsVoiceId`, cross-device voice enrollment, App Store / PWA distribution work.
 
 ---
 
