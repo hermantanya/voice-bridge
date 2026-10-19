@@ -26,6 +26,8 @@ import {
   getSelfMicHint,
   getSelfMicLabel,
   getTurnLabel,
+  isPartnerTurnActive,
+  shouldShowPartnerLiveCard,
 } from "../session/sessionScreenState";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { formatSessionDuration } from "../utils/timeFormat";
@@ -130,10 +132,18 @@ export function SessionScreen({
     (turnParticipantId === participantId &&
       (turnPhase === "speaking" || turnPhase === "processing"));
 
-  const partnerActivityPending =
-    turnParticipantId !== null &&
-    turnParticipantId !== participantId &&
-    (turnPhase === "speaking" || turnPhase === "processing");
+  const partnerTurnActive = isPartnerTurnActive({
+    turnParticipantId,
+    participantId,
+    turnPhase,
+  });
+
+  const partnerActivityPending = partnerTurnActive;
+
+  const showPartnerLiveCard = shouldShowPartnerLiveCard({
+    partnerTurnActive,
+    partnerPartial,
+  });
 
   const canTalk = canStartTalking({
     status,
@@ -630,19 +640,26 @@ export function SessionScreen({
           <Text style={styles.hint}>Partner is speaking.</Text>
         )}
 
-        {partnerPartial?.translatedText || partnerPartial?.sourceText ? (
+        {showPartnerLiveCard ? (
           <View style={styles.partialCard} accessibilityLiveRegion="polite">
             <Text style={styles.partialLabel}>Partner (live)</Text>
-            {partnerPartial.sourceText ? (
+            {partnerPartial?.sourceText ? (
               <Text style={styles.partialSource}>{partnerPartial.sourceText}</Text>
+            ) : partnerTurnActive &&
+              turnPhase === "speaking" &&
+              !partnerPartial?.sourceText &&
+              !partnerPartial?.translatedText ? (
+              <Text style={styles.partialTranslationMuted}>Listening…</Text>
             ) : null}
-            {partnerPartial.translatedText ? (
+            {partnerPartial?.translatedText ? (
               <Text style={styles.partialTranslation}>
                 {partnerPartial.translatedText}
               </Text>
-            ) : (
+            ) : partnerPartial?.sourceText ||
+              turnPhase === "processing" ||
+              !partnerTurnActive ? (
               <Text style={styles.partialTranslationMuted}>Translating…</Text>
-            )}
+            ) : null}
           </View>
         ) : null}
 

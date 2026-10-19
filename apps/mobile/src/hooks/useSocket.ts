@@ -19,6 +19,7 @@ import {
   applyTranslationResultToTranscript,
   applyTranslationSentToTranscript,
   flushPartnerPartialToTranscript,
+  mergePartnerPartial,
   partnerPartialFromEvent,
   type PartnerPartial,
   type TranscriptEntry,
@@ -798,10 +799,11 @@ export function useSocket({
       if (payload.fromParticipantId === participantIdRef.current) {
         return;
       }
-      const next = partnerPartialFromEvent(payload);
-      if (next) {
-        setPartnerPartial(next);
-      }
+      setPartnerPartialState((current) => {
+        const next = mergePartnerPartial(current, payload) ?? current;
+        partnerPartialRef.current = next;
+        return next;
+      });
     };
 
     socket.on("partial_transcript", (payload: PartialTranslationPayload) => {
@@ -811,16 +813,7 @@ export function useSocket({
       streamingPttDebugLog("partial_transcript received", {
         chars: payload.sourceText?.length ?? 0,
       });
-      setPartnerPartialState((current) => {
-        const next: PartnerPartial = {
-          turnId: payload.turnId,
-          fromParticipantId: payload.fromParticipantId,
-          sourceText: payload.sourceText ?? current?.sourceText ?? "",
-          translatedText: current?.translatedText ?? "",
-        };
-        partnerPartialRef.current = next;
-        return next;
-      });
+      applyPartnerPartial(payload);
     });
 
     socket.on("partial_translation", (payload: PartialTranslationPayload) => {
@@ -838,6 +831,18 @@ export function useSocket({
     );
 
     socket.on("translation_transcript", (payload: TranslationTranscriptPayload) => {
+      if (payload.fromParticipantId === participantIdRef.current) {
+        return;
+      }
+      const livePartial = partnerPartialFromEvent({
+        turnId: payload.turnId,
+        fromParticipantId: payload.fromParticipantId,
+        sourceText: payload.sourceText,
+        translatedText: payload.translatedText,
+      });
+      if (livePartial) {
+        setPartnerPartial(livePartial);
+      }
       setTranscript((entries) => {
         const next = appendTranscriptIfNew(
           entries,

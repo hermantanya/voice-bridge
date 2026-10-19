@@ -6,6 +6,7 @@ import {
   applyTranslationResultToTranscript,
   applyTranslationSentToTranscript,
   flushPartnerPartialToTranscript,
+  mergePartnerPartial,
   partnerPartialFromEvent,
   transcriptKey,
 } from "./transcriptState.js";
@@ -93,6 +94,23 @@ describe("transcriptState", () => {
 
     assert.equal(afterFinal.entries.length, 1);
     assert.equal(afterFinal.entries[0]?.latencyMs, 110);
+  });
+
+  test("mergePartnerPartial keeps sourceText when translation arrives without it", () => {
+    const afterTranscript = mergePartnerPartial(null, {
+      turnId: "s-1",
+      fromParticipantId: "web",
+      sourceText: "hello",
+    });
+    assert.equal(afterTranscript?.sourceText, "hello");
+
+    const afterTranslation = mergePartnerPartial(afterTranscript, {
+      turnId: "s-1",
+      fromParticipantId: "web",
+      translatedText: "shalom",
+    });
+    assert.equal(afterTranslation?.sourceText, "hello");
+    assert.equal(afterTranslation?.translatedText, "shalom");
   });
 
   test("flushPartnerPartialToTranscript preserves live partner text", () => {

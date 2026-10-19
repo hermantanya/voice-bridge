@@ -159,6 +159,37 @@ export function applyTranslationSentToTranscript(
   );
 }
 
+/** Merge streaming partial_transcript / partial_translation chunks for one turn. */
+export function mergePartnerPartial(
+  current: PartnerPartial | null,
+  payload: {
+    turnId: string;
+    fromParticipantId: string;
+    sourceText?: string;
+    translatedText?: string;
+  },
+): PartnerPartial | null {
+  const sameTurn = current?.turnId === payload.turnId;
+  const base = sameTurn ? current : null;
+
+  const merged: PartnerPartial = {
+    turnId: payload.turnId,
+    fromParticipantId: payload.fromParticipantId,
+    sourceText: payload.sourceText ?? base?.sourceText ?? "",
+    translatedText: payload.translatedText ?? base?.translatedText ?? "",
+  };
+
+  const hasText =
+    merged.translatedText.trim().length > 0 ||
+    merged.sourceText.trim().length > 0;
+
+  if (!hasText) {
+    return sameTurn ? base : null;
+  }
+
+  return merged;
+}
+
 export function partnerPartialFromEvent(payload: {
   turnId: string;
   fromParticipantId: string;

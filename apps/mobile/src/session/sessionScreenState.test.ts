@@ -6,6 +6,8 @@ import {
   getSelfMicHint,
   getSelfMicLabel,
   getTurnLabel,
+  isPartnerTurnActive,
+  shouldShowPartnerLiveCard,
 } from "./sessionScreenState.js";
 
 test("getTurnLabel shows waiting for partner when alone in room", () => {
@@ -91,6 +93,30 @@ test("canStartTalking is false when self-muted", () => {
       isOpenTurn: true,
       isMyTurn: false,
       isSelfMuted: true,
+    }),
+    false,
+  );
+});
+
+test("shouldShowPartnerLiveCard during partner batch hold without partial text", () => {
+  assert.equal(
+    shouldShowPartnerLiveCard({
+      partnerTurnActive: isPartnerTurnActive({
+        turnParticipantId: "partner-id",
+        participantId: "me-id",
+        turnPhase: "speaking",
+      }),
+      partnerPartial: null,
+    }),
+    true,
+  );
+});
+
+test("shouldShowPartnerLiveCard hides when floor is open and no partial", () => {
+  assert.equal(
+    shouldShowPartnerLiveCard({
+      partnerTurnActive: false,
+      partnerPartial: null,
     }),
     false,
   );

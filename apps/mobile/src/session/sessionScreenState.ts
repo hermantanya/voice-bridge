@@ -23,6 +23,32 @@ export function getSelfMicHint(
   return "Push-to-talk — hold the button while you speak.";
 }
 
+export function isPartnerTurnActive(input: {
+  turnParticipantId: string | null;
+  participantId: string | null;
+  turnPhase: TurnPhase;
+}): boolean {
+  return (
+    input.turnParticipantId !== null &&
+    input.participantId !== null &&
+    input.turnParticipantId !== input.participantId &&
+    (input.turnPhase === "speaking" || input.turnPhase === "processing")
+  );
+}
+
+export function shouldShowPartnerLiveCard(input: {
+  partnerTurnActive: boolean;
+  partnerPartial?: { sourceText?: string; translatedText?: string } | null;
+}): boolean {
+  if (input.partnerTurnActive) {
+    return true;
+  }
+
+  const source = input.partnerPartial?.sourceText?.trim() ?? "";
+  const translated = input.partnerPartial?.translatedText?.trim() ?? "";
+  return source.length > 0 || translated.length > 0;
+}
+
 export function getTurnLabel(input: {
   participants: number;
   isProcessing: boolean;

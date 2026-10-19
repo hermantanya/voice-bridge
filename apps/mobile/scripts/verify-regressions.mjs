@@ -132,7 +132,18 @@ const checks = [
   {
     name: "session shows partner live partial card",
     file: "src/screens/SessionScreen.tsx",
-    required: ["Partner (live)", "partnerPartial", "accessibilityLiveRegion"],
+    required: [
+      "Partner (live)",
+      "partnerPartial",
+      "accessibilityLiveRegion",
+      "shouldShowPartnerLiveCard",
+      "Listening…",
+    ],
+  },
+  {
+    name: "socket merges streaming partner partial chunks",
+    file: "src/hooks/useSocket.ts",
+    required: ["mergePartnerPartial", "translation_transcript"],
   },
   {
     name: "App re-renders session on partner partial updates",
