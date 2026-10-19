@@ -301,6 +301,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 | Version | Features |
 |---|---|
 | **v2.0** (standalone) | **Push-to-talk** + **self-mute** (Live/Muted); iOS WAV upload reliability; server `utterance` path kept for integrations — **no in-app hands-free VAD** |
+| **v2.x** (planned) | **Streaming PTT** — partial transcript/translation while you hold the button; finalize + TTS on release ([EXECUTION_PLAN.md](EXECUTION_PLAN.md#streaming-ptt-milestone-planned)) |
 | v2.x call add-on | **Future:** Zoom / WhatsApp / video-call integration using server utterance routing (not the standalone app mic path) |
 | v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
 | v2.5 | Per-persona mute/unmute; per-speaker transcripts |

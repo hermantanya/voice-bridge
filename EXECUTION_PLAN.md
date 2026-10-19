@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; **PTT latency** — early `translation_transcript` before TTS + Settings **Transcript only**; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; **PTT latency** — early `translation_transcript` before TTS + Settings **Transcript only**; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **Streaming PTT** milestone documented below; **external beta** optional when domain ready)
 
 ---
 
@@ -135,6 +135,41 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 - [~] **Client VAD** (was v2 phase 3) — **reverted**; not shipping in standalone app
 - [~] **Live hands-free Settings mode** (was v2 phase 4) — **deferred**; UI shows coming soon only
+
+---
+
+## Streaming PTT milestone (planned)
+
+**Problem:** Today the client sends one **`audio_chunk`** after button release. The server runs batch Whisper STT, then translate + TTS. Long utterances feel slow — the partner sees nothing until the full recording is uploaded and processed.
+
+**Goal:** Keep the **hold-to-talk UI unchanged** (same turn lock, self-mute, floor rules). While the button is held, **stream audio** to the server; run **streaming ASR** and emit **partial transcripts**; translate partials and push **`partial_translation`** (or similarly named) WebSocket events so the listener sees text build in real time. On **release**, **finalize** the utterance (commit final transcript + translation) and run **TTS once** on the final text (optional if Settings **Transcript only** / `playTranslatedVoice: false`).
+
+**Not the same as removed hands-free VAD:** Streaming PTT is still **explicit push-to-talk** — audio uplink only while the user holds the button. No ambient listening, no client VAD auto-segmentation, no `utterance` events from a always-on mic. **Deferred standalone hands-free** (Settings “coming soon”) **stays deferred.**
+
+### Approach (high level)
+
+| Layer | Change |
+|---|---|
+| Client | During hold: send small time-sliced chunks (e.g. MediaRecorder `timeslice` on web; platform equivalent on iOS) instead of waiting for release |
+| Server | Maintain per-turn streaming session; forward audio to streaming STT provider; debounce partial translate; emit partial WS events to listener (and optionally speaker) |
+| Release | End stream; take final STT result; existing pipeline for `translation_transcript` + `translation_result` / TTS |
+| Fallback | If streaming unavailable or provider errors, **keep current batch PTT** (single chunk on release) |
+
+### Phases
+
+1. **Spike (web):** `MediaRecorder` chunked upload + one streaming STT provider — evaluate **Deepgram**, **AssemblyAI**, or **OpenAI** realtime/streaming APIs (latency, HE/RU quality, cost). Wire **`partial_translation`** (and partial transcript if split) on Socket.io; measure time-to-first-partial vs batch.
+2. **Productize web:** Feature flag or auto-detect; rate limits for partial events; integration tests for hold → partials → release → TTS.
+3. **iOS / Expo:** Chunked capture compatible with existing PCM/WAV path where possible; same server contract.
+4. **Polish:** Cap partial update rate; clear partial UI on turn end; document operator cost.
+
+### Dependencies
+
+- **Provider API key** for chosen streaming STT (may differ from batch Whisper-only path today).
+- **Cost:** Streaming ASR is often billed per audio minute **while holding**; partial translation adds extra GPT calls unless batched/throttled — budget for dogfood before wide beta.
+
+### Status
+
+📋 **Planned** — after v1.5 dogfood stability; does not block external beta checklist.
 
 ---
 
@@ -288,7 +323,8 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 | Version | Focus |
 |---|---|
 | **v1.4** | ✅ Shipped — profiles + voice sync + guest/welcome. **v1.5:** internal dogfood + CI. **External beta:** domain + Resend + EAS when ready |
-| **v2.0** | Hands-free (VAD) + **self-mute**; **Option A** utterance routing; Settings **PTT vs hands-free**; pass-through languages later |
+| **v2.0** | ✅ Standalone **PTT + self-mute** + iOS upload fixes (shipped). Hands-free VAD **removed** from standalone app |
+| **v2.x** | **Streaming PTT** — partial STT/translate while holding button; batch PTT fallback — see section above |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 
 ---
