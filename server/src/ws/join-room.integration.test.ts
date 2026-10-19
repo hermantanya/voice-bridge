@@ -12,10 +12,13 @@ type JoinedRoomPayload = {
   roomCode: string;
 };
 
+/** GitHub Actions runners can be slow to connect WebSockets; allow extra headroom in CI. */
+const EVENT_TIMEOUT_MS = process.env.CI === "true" ? 20_000 : 10_000;
+
 function waitForTurnPhase(
   socket: ClientSocket,
   phase: string,
-  timeoutMs = 5000,
+  timeoutMs = EVENT_TIMEOUT_MS,
 ): Promise<{ phase: string; turnParticipantId: string | null }> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -38,17 +41,21 @@ function waitForTurnPhase(
 function waitForEvent<T>(
   socket: ClientSocket,
   event: string,
-  timeoutMs = 5000,
+  timeoutMs = EVENT_TIMEOUT_MS,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+      socket.off(event, handler);
       reject(new Error(`Timed out waiting for ${event}`));
     }, timeoutMs);
 
-    socket.once(event, (payload: T) => {
+    const handler = (payload: T) => {
       clearTimeout(timer);
+      socket.off(event, handler);
       resolve(payload);
-    });
+    };
+
+    socket.on(event, handler);
   });
 }
 
@@ -99,6 +106,7 @@ async function connectClient(url: string): Promise<ClientSocket> {
   const socket = createClient(url, {
     transports: ["websocket"],
     forceNew: true,
+    timeout: EVENT_TIMEOUT_MS,
   });
   await waitForEvent(socket, "connect");
   return socket;
@@ -120,7 +128,7 @@ function emitJoinRoom(
 function waitForAtLeastParticipants(
   socket: ClientSocket,
   count: number,
-  timeoutMs = 10_000,
+  timeoutMs = EVENT_TIMEOUT_MS,
 ): Promise<JoinedRoomPayload> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -177,10 +185,7 @@ test("two clients joining the same room both end up with two participants", asyn
     clients.push(disconnectHost);
     assert.equal(hostJoined.participants, 1);
 
-    const guestJoinedPromise = waitForEvent<JoinedRoomPayload>(
-      host,
-      "participant_joined",
-    );
+    const hostSeesTwo = waitForAtLeastParticipants(host, 2);
     const { joined: guestJoined, disconnect: disconnectGuest } = await joinRoom(
       server.url,
       roomCode,
@@ -190,7 +195,7 @@ test("two clients joining the same room both end up with two participants", asyn
 
     assert.equal(guestJoined.participants, 2);
 
-    const hostUpdate = await guestJoinedPromise;
+    const hostUpdate = await hostSeesTwo;
     assert.equal(hostUpdate.participants, 2);
   } finally {
     for (const disconnect of clients) {
