@@ -42,7 +42,8 @@ export function nativeRecordingFormatForUpload(uri: string): string {
   return fromUri;
 }
 
-export const MIN_RECORDING_DURATION_MS = 300;
+/** Wall-clock / recorder duration; keep low so normal holds are not rejected. */
+export const MIN_RECORDING_DURATION_MS = 200;
 export const MIN_RECORDING_BYTES = 512;
 
 export function isDeliverableRecording(

@@ -5,7 +5,6 @@ import {
   setAudioModeAsync,
   type AudioPlayer,
 } from "expo-audio";
-import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
@@ -13,6 +12,10 @@ import {
   isDeliverableRecording,
   nativeRecordingFormatForUpload,
 } from "../session/nativeRecordingFormat";
+import {
+  nativeRecordingDurationMs,
+  readNativeRecordingAsBase64,
+} from "../session/readNativeRecording";
 import { playNativeMp3Base64 } from "../session/nativeMp3Playback";
 import {
   clearSavedMicDeviceId,
@@ -262,12 +265,12 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   }, [permissionGranted]);
 
   const deliverRecording = useCallback(
-    (audioBase64: string, format: string): boolean => {
-      const startedAt = recordingStartedAtRef.current;
+    (
+      audioBase64: string,
+      format: string,
+      recordingDurationMs: number,
+    ): boolean => {
       recordingStartedAtRef.current = null;
-      const recordingDurationMs = startedAt
-        ? Math.max(0, Date.now() - startedAt)
-        : 0;
 
       if (!isDeliverableRecording(audioBase64, recordingDurationMs)) {
         return false;
@@ -280,9 +283,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   );
 
   const startRecording = useCallback(async () => {
-    recordingStartedAtRef.current = Date.now();
-
     if (Platform.OS === "web") {
+      recordingStartedAtRef.current = Date.now();
       if (webStartInProgressRef.current) {
         return;
       }
@@ -394,8 +396,16 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
             return;
           }
 
+          const startedAt = recordingStartedAtRef.current;
+          const recordingDurationMs = startedAt
+            ? Math.max(0, Date.now() - startedAt)
+            : 0;
           const audioBase64 = await blobToBase64(blob);
-          const delivered = deliverRecording(audioBase64, format);
+          const delivered = deliverRecording(
+            audioBase64,
+            format,
+            recordingDurationMs,
+          );
           pendingStopResolveRef.current?.(delivered);
           pendingStopResolveRef.current = null;
           })();
@@ -448,6 +458,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
+    recordingStartedAtRef.current = Date.now();
     recording.record();
 
     if (nativeStopRequestedRef.current) {
@@ -538,27 +549,28 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     try {
       await recording.stop();
-      const uri = recording.uri;
 
-      if (!uri) {
+      const startedAt = recordingStartedAtRef.current;
+      const wallClockMs = startedAt
+        ? Math.max(0, Date.now() - startedAt)
+        : 0;
+      const recordingDurationMs = nativeRecordingDurationMs(
+        recording,
+        wallClockMs,
+      );
+
+      const readResult = await readNativeRecordingAsBase64(recording);
+      if (!readResult) {
+        recordingStartedAtRef.current = null;
         return false;
       }
 
-      let audioBase64: string;
-      try {
-        audioBase64 = await readAsStringAsync(uri, {
-          encoding: "base64",
-        });
-      } catch {
-        return false;
-      }
-
-      if (!audioBase64.trim()) {
-        return false;
-      }
-
-      const format = nativeRecordingFormatForUpload(uri);
-      return deliverRecording(audioBase64, format);
+      const format = nativeRecordingFormatForUpload(readResult.uri);
+      return deliverRecording(
+        readResult.audioBase64,
+        format,
+        recordingDurationMs,
+      );
     } finally {
       nativeStopRequestedRef.current = false;
     }
