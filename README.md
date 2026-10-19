@@ -257,8 +257,8 @@ Use this after deploy or when rotating secrets. Production URL example: `https:/
 | OpenAI | `OPENAI_API_KEY` | STT + translation |
 | ElevenLabs | `ELEVENLABS_API_KEY` | Voice enroll + cloned TTS |
 | CORS / WebSocket | `CLIENT_ORIGIN` | `*` for dev; restrict to your web origin when you have a fixed domain |
-| OTP email (beta+) | `RESEND_API_KEY`, `AUTH_FROM_EMAIL` | Required before external testers |
-| Dev OTP on screen | `AUTH_DEV_RETURN_OTP` | `true` only for your own testing; **`false`** before external beta |
+| OTP email (external beta) | `RESEND_API_KEY`, `AUTH_FROM_EMAIL` | **Deferred** until you have a **domain** + external testers; Resend Free is enough |
+| Dev OTP on screen | `AUTH_DEV_RETURN_OTP` | **`true`** for household testing **without a domain**; **`false`** when real email is live |
 | Mobile app | `apps/mobile/.env` | `EXPO_PUBLIC_API_URL` → your Railway HTTPS URL (gitignored) |
 
 **Smoke test (2 min):** `/health` → mobile sign-in (OTP) → change Translate to on device A → open Settings on device B and confirm sync within a few seconds → create/join a room with two participants.
@@ -294,7 +294,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 | **v1.2** (done) | Real voice on translated speech (ElevenLabs IVC); Settings enrollment (~30s minimum); gender-aware Hebrew/Russian translation; device-local `voice_id`; preset fallback |
 | **v1.3** (done) | Auto-detect spoken language; **Translate to** UX; same-language transcript-only skip; Settings voice preview; join waits for voice profile load |
 | **v1.4** (done) | Email OTP sign-in; guest mode; Postgres profiles; sync Translate to + gender + cloned voice; welcome/auth entry; Settings draft save |
-| v1.5 | Pre-beta polish (Resend, CI) → small Expo beta → App Store / PWA later |
+| v1.5 | Internal dogfood + CI (dev OTP OK). **External beta later:** cheap domain + Resend Free + EAS link — see [EXECUTION_PLAN.md](EXECUTION_PLAN.md) **External beta readiness** |
 
 ### Group and table (v2–v3)
 

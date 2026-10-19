@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped** — profiles + cross-device voice sync; pre-beta polish next)
+**Last updated:** October 2026 (**v1.4 shipped** — internal dogfood + CI; **external beta blocked on domain + email OTP** when ready)
 
 ---
 
@@ -25,7 +25,7 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
 | **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
 | **v1.4** — Signed-in profiles; voice sync; welcome/guest entry | ✅ Shipped |
-| **v1.5** — Pre-beta polish; Expo beta; App Store / PWA | 📋 Next |
+| **v1.5** — Internal polish (dogfood); **external beta** later (domain + Resend + EAS) | 📋 Next |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -47,7 +47,7 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 - [x] Guests unchanged: optional device-local prefs in AsyncStorage
 - [x] Supabase Postgres on Railway (`DATABASE_URL`); TLS + non-fatal migration logging for deploy stability
 - [x] Mobile: **expo-audio** (Expo SDK 57 / Expo Go); sign-in error handling (no uncaught OTP failures)
-- [x] Interim prod testing: `AUTH_DEV_RETURN_OTP` on Railway (replace with real email before external beta)
+- [x] Interim prod testing: `AUTH_DEV_RETURN_OTP` on Railway (keep until **external beta** — see below)
 
 ---
 
@@ -75,21 +75,35 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 ---
 
-## v1.4 pre-beta polish (**after phase 2, before inviting testers**)
+## v1.5 internal polish (**now — household / dev OTP only**)
 
-Complete voice sync first; then harden what external beta users will hit.
+No domain or Resend required. Production keeps **`AUTH_DEV_RETURN_OTP=true`** so sign-in codes appear in the app (fine for you and anyone beside you while testing).
 
-- [ ] **Real email OTP:** Resend — `RESEND_API_KEY` + `AUTH_FROM_EMAIL` on Railway; set `AUTH_DEV_RETURN_OTP=false`
 - [x] **CI green:** fix flaky `join-room.integration.test.ts` so GitHub `check` is trustworthy on every push
 - [ ] **Dogfood pass:** two devices + web with **signed-in** accounts — Translate to, gender, and **cloned voice** all consistent across devices
 - [x] **Railway / Supabase checklist:** `DATABASE_URL`, `AUTH_JWT_SECRET`, rate limits, health smoke test documented for operators (see README **Production operator checklist**)
 
+**Do not do yet:** real inbox OTP, turning off dev codes, or inviting strangers — that waits for **External beta readiness** below.
+
 ---
 
-## v1.4 beta distribution (**after pre-beta polish**)
+## External beta readiness (**when inviting people outside the household**)
 
-- [ ] Expo Go + **EAS** share link for a small tester group (no App Store / $99 yet)
-- [ ] Short tester doc: sign-in, enroll once, join room from two phones
+Gate: you are ready to give testers a link and they sign in **without** seeing a dev code on screen.
+
+### No domain yet? (remember this)
+
+- **Resend Free ($0)** works for beta volume, but **you need a domain you control** to send to arbitrary inboxes (`AUTH_FROM_EMAIL` like `Voice Bridge <auth@yourdomain.com>` + DNS in Resend).
+- **`onboarding@resend.dev`** is sandbox only — not a substitute for real beta (typically limited to your own Resend account email).
+- **No domain today** → stay on **dev OTP**; defer everything in this section until you buy a domain (~$10–15/year) or otherwise control DNS. The app and Railway deploy are unchanged.
+
+### Checklist (in order, when ready)
+
+- [ ] **Domain:** register one (Cloudflare / Porkbun / Namecheap, etc.); add Resend SPF/DKIM records (no website required)
+- [ ] **Resend (free tier):** `RESEND_API_KEY` + `AUTH_FROM_EMAIL` on Railway; smoke-test OTP to a real inbox
+- [ ] **Lock down dev OTP:** set `AUTH_DEV_RETURN_OTP=false` (and `NODE_ENV=production` on Railway)
+- [ ] **Expo Go + EAS** share link for a small tester group (no App Store / $99 yet)
+- [ ] **Short tester doc:** sign-in, enroll once, join room from two phones
 - [ ] **Later:** App Store / PWA packaging if we outgrow Expo Go
 
 ---
@@ -228,7 +242,7 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 
 | Version | Focus |
 |---|---|
-| **v1.4** | ✅ Shipped — profiles + voice sync + guest/welcome. **v1.5:** pre-beta polish → Expo/EAS beta → App Store / PWA later |
+| **v1.4** | ✅ Shipped — profiles + voice sync + guest/welcome. **v1.5:** internal dogfood + CI. **External beta:** domain + Resend + EAS when ready |
 | **v2.0** | Hands-free (VAD); pass-through languages; saved language prefs |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 
