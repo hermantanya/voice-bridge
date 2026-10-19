@@ -11,26 +11,6 @@ export type LanguageCode = "en" | "he" | "ru";
 
 export type SpeakerGender = "female" | "male";
 
-/** Device preference; hands-free UI only until VAD ships (session stays PTT). */
-export type ConversationMode = "push_to_talk" | "hands_free";
-
-export const CONVERSATION_MODES: {
-  value: ConversationMode;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "push_to_talk",
-    label: "Push-to-talk",
-    description: "Hold the talk button while you speak.",
-  },
-  {
-    value: "hands_free",
-    label: "Hands-free",
-    description: "Speak without holding a button. Coming soon.",
-  },
-];
-
 export const SPEAKER_GENDERS: { value: SpeakerGender; label: string }[] = [
   { value: "female", label: "Female" },
   { value: "male", label: "Male" },

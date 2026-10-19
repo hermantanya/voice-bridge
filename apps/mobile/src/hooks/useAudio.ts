@@ -5,17 +5,10 @@ import {
   setAudioModeAsync,
   type AudioPlayer,
 } from "expo-audio";
+import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
-import {
-  isDeliverableRecording,
-  nativeRecordingFormatForUpload,
-} from "../session/nativeRecordingFormat";
-import {
-  nativeRecordingDurationMs,
-  readNativeRecordingAsBase64,
-} from "../session/readNativeRecording";
 import { playNativeMp3Base64 } from "../session/nativeMp3Playback";
 import {
   clearSavedMicDeviceId,
@@ -265,26 +258,21 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   }, [permissionGranted]);
 
   const deliverRecording = useCallback(
-    (
-      audioBase64: string,
-      format: string,
-      recordingDurationMs: number,
-    ): boolean => {
+    (audioBase64: string, format: string) => {
+      const startedAt = recordingStartedAtRef.current;
       recordingStartedAtRef.current = null;
-
-      if (!isDeliverableRecording(audioBase64, recordingDurationMs)) {
-        return false;
-      }
-
+      const recordingDurationMs = startedAt
+        ? Math.max(0, Date.now() - startedAt)
+        : 0;
       onAudioReadyRef.current(audioBase64, format, recordingDurationMs);
-      return true;
     },
     [],
   );
 
   const startRecording = useCallback(async () => {
+    recordingStartedAtRef.current = Date.now();
+
     if (Platform.OS === "web") {
-      recordingStartedAtRef.current = Date.now();
       if (webStartInProgressRef.current) {
         return;
       }
@@ -396,17 +384,9 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
             return;
           }
 
-          const startedAt = recordingStartedAtRef.current;
-          const recordingDurationMs = startedAt
-            ? Math.max(0, Date.now() - startedAt)
-            : 0;
           const audioBase64 = await blobToBase64(blob);
-          const delivered = deliverRecording(
-            audioBase64,
-            format,
-            recordingDurationMs,
-          );
-          pendingStopResolveRef.current?.(delivered);
+          deliverRecording(audioBase64, format);
+          pendingStopResolveRef.current?.(true);
           pendingStopResolveRef.current = null;
           })();
         };
@@ -458,7 +438,6 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
-    recordingStartedAtRef.current = Date.now();
     recording.record();
 
     if (nativeStopRequestedRef.current) {
@@ -549,28 +528,19 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     try {
       await recording.stop();
+      const uri = recording.uri;
 
-      const startedAt = recordingStartedAtRef.current;
-      const wallClockMs = startedAt
-        ? Math.max(0, Date.now() - startedAt)
-        : 0;
-      const recordingDurationMs = nativeRecordingDurationMs(
-        recording,
-        wallClockMs,
-      );
-
-      const readResult = await readNativeRecordingAsBase64(recording);
-      if (!readResult) {
-        recordingStartedAtRef.current = null;
+      if (!uri) {
         return false;
       }
 
-      const format = nativeRecordingFormatForUpload(readResult.uri);
-      return deliverRecording(
-        readResult.audioBase64,
-        format,
-        recordingDurationMs,
-      );
+      const audioBase64 = await readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+
+      const format = uri.endsWith(".caf") ? "caf" : "m4a";
+      deliverRecording(audioBase64, format);
+      return true;
     } finally {
       nativeStopRequestedRef.current = false;
     }
@@ -639,12 +609,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     if (Platform.OS === "web") {
       const audio = new window.Audio(`data:audio/mp3;base64,${audioBase64}`);
-      try {
-        await audio.play();
-      } catch (error) {
-        console.warn("Web translation playback blocked or failed:", error);
-        throw error;
-      }
+      await audio.play();
       return;
     }
 

@@ -7,24 +7,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 
 import { SpeakingTimeStat } from "../components/SpeakingTimeStat";
 import { TranscriptPanel } from "../components/TranscriptPanel";
-import {
-  languageLabel,
-  SERVER_URL,
-  type ConversationMode,
-  type LanguageCode,
-} from "../config";
-import { getSessionModeSubtitle } from "../session/conversationMode";
+import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
 import type { TranscriptEntry, TranslationResult } from "../hooks/useSocket";
 import {
   canStartTalking,
-  getSelfMicHint,
-  getSelfMicLabel,
   getTurnLabel,
 } from "../session/sessionScreenState";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
@@ -35,7 +26,6 @@ type TurnPhase = "waiting" | "speaking" | "processing";
 type SessionScreenProps = {
   roomCode: string;
   myLang: LanguageCode;
-  conversationMode?: ConversationMode;
   partnerLang: LanguageCode | null;
   voiceStatus: VoiceProfileStatus;
   lastReceived: TranslationResult | null;
@@ -55,8 +45,7 @@ type SessionScreenProps = {
   partnerBillableMs: number;
   sessionStartedAt: number | null;
   onStartRecording: (stillHolding: () => boolean) => Promise<void>;
-  onStopRecording: () => void | Promise<void>;
-  onEndSpeaking?: () => Promise<void>;
+  onStopRecording: () => void;
   onLeave: () => void;
 };
 
@@ -89,7 +78,6 @@ function statusLabel(status: SessionScreenProps["status"]): string {
 export function SessionScreen({
   roomCode,
   myLang,
-  conversationMode = "push_to_talk",
   partnerLang,
   voiceStatus,
   lastReceived,
@@ -110,13 +98,9 @@ export function SessionScreen({
   sessionStartedAt,
   onStartRecording,
   onStopRecording,
-  onEndSpeaking,
   onLeave,
 }: SessionScreenProps) {
-  const [selfMuted, setSelfMuted] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
-  const { width: windowWidth } = useWindowDimensions();
-  const stackMicBanner = windowWidth < 520;
   const [nowMs, setNowMs] = useState(() => Date.now());
   const holdingRef = useRef(false);
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -140,19 +124,13 @@ export function SessionScreen({
     isRecording,
     isOpenTurn,
     isMyTurn,
-    isSelfMuted: selfMuted,
   });
-
-  const selfMicLabel = getSelfMicLabel(selfMuted);
-  const selfMicHint = getSelfMicHint(selfMuted, conversationMode);
-  const modeSubtitle = getSessionModeSubtitle(conversationMode);
 
   const turnLabel = getTurnLabel({
     participants,
     isProcessing,
     isMyTurn,
     isOpenTurn,
-    isSelfMuted: selfMuted,
   });
 
   const turnColor = (() => {
@@ -328,33 +306,7 @@ export function SessionScreen({
     }
   }, [isRecording, onStopRecording]);
 
-  const handleToggleSelfMute = useCallback(async () => {
-    if (selfMuted) {
-      setSelfMuted(false);
-      return;
-    }
-
-    holdingRef.current = false;
-    try {
-      setRecordError(null);
-      await stopTalking();
-      if (onEndSpeaking) {
-        await onEndSpeaking();
-      }
-    } catch (error) {
-      setRecordError(
-        error instanceof Error ? error.message : "Could not stop speaking",
-      );
-      return;
-    }
-    setSelfMuted(true);
-  }, [onEndSpeaking, selfMuted, stopTalking]);
-
   const handleTalkStart = async () => {
-    if (selfMuted) {
-      return;
-    }
-
     if (isRecording) {
       await stopTalking();
       return;
@@ -424,32 +376,25 @@ export function SessionScreen({
           styles.talkButton,
           isRecording && styles.talkButtonActive,
           isProcessing && styles.talkButtonProcessing,
-          (selfMuted || (!canTalk && !isRecording && !isProcessing)) &&
-            styles.talkButtonDisabled,
+          !canTalk && !isRecording && !isProcessing && styles.talkButtonDisabled,
         ]}
         onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
         onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
         onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
         onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
         onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
-        disabled={
-          selfMuted || (Platform.OS !== "web" && !canTalk && !isRecording)
-        }
+        disabled={Platform.OS !== "web" && !canTalk && !isRecording}
         accessibilityRole="button"
         accessibilityLabel={
-          selfMuted
-            ? "Hold to talk disabled while you are muted"
-            : isRecording
-              ? "Listening, release to stop"
-              : isProcessing
-                ? "Translating"
-                : isMyTurn || isOpenTurn
-                  ? "Hold to talk"
-                  : "Partner is speaking"
+          isRecording
+            ? "Listening, release to stop"
+            : isProcessing
+              ? "Translating"
+              : isMyTurn || isOpenTurn
+                ? "Hold to talk"
+                : "Partner is speaking"
         }
-        accessibilityState={{
-          disabled: selfMuted || (!canTalk && !isRecording),
-        }}
+        accessibilityState={{ disabled: !canTalk && !isRecording }}
       >
         {isRecording ? (
           <View style={styles.talkButtonContent}>
@@ -461,8 +406,6 @@ export function SessionScreen({
             <ActivityIndicator color="#ffffff" />
             <Text style={styles.talkButtonSubtext}>Translating...</Text>
           </View>
-        ) : selfMuted ? (
-          <Text style={styles.talkButtonText}>Muted</Text>
         ) : (
           <Text style={styles.talkButtonText}>
             {isMyTurn || isOpenTurn ? "Hold to talk" : "Partner is speaking"}
@@ -483,54 +426,6 @@ export function SessionScreen({
       <View style={styles.header}>
         <Text style={styles.title}>Session</Text>
         <Text style={styles.roomCodeInline}>{roomCode}</Text>
-        <Text style={styles.modeSubtitle}>{modeSubtitle}</Text>
-      </View>
-
-      <View
-        style={[
-          styles.micStatusBanner,
-          stackMicBanner && styles.micStatusBannerStack,
-          selfMuted ? styles.micStatusBannerMuted : styles.micStatusBannerLive,
-        ]}
-        accessibilityRole="summary"
-        accessibilityLabel={`${selfMicLabel}. ${selfMicHint}`}
-      >
-        <View style={styles.micStatusHeaderRow}>
-          <View
-            style={[
-              styles.micStatusDot,
-              selfMuted ? styles.micStatusDotMuted : styles.micStatusDotLive,
-            ]}
-          />
-          <View style={styles.micStatusCopy}>
-            <Text style={styles.micStatusTitle}>{selfMicLabel}</Text>
-            <Text style={styles.micStatusHint}>{selfMicHint}</Text>
-          </View>
-        </View>
-        <Pressable
-          style={[
-            styles.micToggleButton,
-            stackMicBanner && styles.micToggleButtonStacked,
-            selfMuted && styles.micToggleButtonUnmute,
-          ]}
-          onPress={() => {
-            void handleToggleSelfMute();
-          }}
-          accessibilityRole="switch"
-          accessibilityLabel={
-            selfMuted ? "Unmute yourself" : "Mute yourself"
-          }
-          accessibilityState={{ checked: !selfMuted }}
-        >
-          <Text
-            style={[
-              styles.micToggleButtonText,
-              selfMuted && styles.micToggleButtonTextUnmute,
-            ]}
-          >
-            {selfMuted ? "Unmute" : "Mute"}
-          </Text>
-        </Pressable>
       </View>
 
       <View style={styles.talkSection}>
@@ -611,10 +506,6 @@ export function SessionScreen({
             Waiting for a second participant to join. Both devices must use the
             same server ({SERVER_URL.replace(/^https?:\/\//, "")}).
           </Text>
-        ) : selfMuted ? (
-          <Text style={styles.hint} numberOfLines={2}>
-            Mic is off. Tap Unmute above, then hold the button to speak.
-          </Text>
         ) : isMyTurn || isOpenTurn ? (
           <Text style={styles.hint} numberOfLines={2}>
             Hold to talk.
@@ -652,86 +543,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
-  micStatusBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-  micStatusBannerStack: {
-    flexDirection: "column",
-    alignItems: "stretch",
-  },
-  micStatusHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    flex: 1,
-  },
-  micStatusBannerLive: {
-    backgroundColor: "#14532d",
-    borderColor: "#22c55e",
-  },
-  micStatusBannerMuted: {
-    backgroundColor: "#334155",
-    borderColor: "#64748b",
-  },
-  micStatusDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    flexShrink: 0,
-  },
-  micStatusDotLive: {
-    backgroundColor: "#4ade80",
-  },
-  micStatusDotMuted: {
-    backgroundColor: "#94a3b8",
-  },
-  micStatusCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  micStatusTitle: {
-    color: "#f8fafc",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  micStatusHint: {
-    color: "#cbd5e1",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  micToggleButton: {
-    backgroundColor: "#0f172a",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#475569",
-    flexShrink: 0,
-  },
-  micToggleButtonStacked: {
-    alignSelf: "stretch",
-    alignItems: "center",
-  },
-  micToggleButtonUnmute: {
-    backgroundColor: "#22c55e",
-    borderColor: "#16a34a",
-  },
-  micToggleButtonText: {
-    color: "#f8fafc",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  micToggleButtonTextUnmute: {
-    color: "#0f172a",
-  },
   talkSection: {
     marginBottom: 12,
     gap: 8,
@@ -746,11 +557,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 2,
-  },
-  modeSubtitle: {
-    color: "#94a3b8",
-    fontSize: 14,
-    lineHeight: 20,
   },
   statsCard: {
     backgroundColor: "#1e293b",

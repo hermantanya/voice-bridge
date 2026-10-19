@@ -4,14 +4,10 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from "expo-audio";
+import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
-import { nativeRecordingFormatForUpload } from "../session/nativeRecordingFormat";
-import {
-  nativeRecordingDurationMs,
-  readNativeRecordingAsBase64,
-} from "../session/readNativeRecording";
 import { acquireWebMicrophoneStream } from "../web/microphoneDevices";
 
 export type EnrollmentRecordingResult = {
@@ -205,20 +201,19 @@ export function useEnrollmentRecording() {
       }
 
       await recording.stop();
-
-      const recordingDurationMs = nativeRecordingDurationMs(
-        recording,
-        durationMs,
-      );
-      const readResult = await readNativeRecordingAsBase64(recording);
-      if (!readResult) {
+      const uri = recording.uri;
+      if (!uri) {
         return null;
       }
 
+      const audioBase64 = await readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+
       return {
-        audioBase64: readResult.audioBase64,
-        format: nativeRecordingFormatForUpload(readResult.uri),
-        durationMs: recordingDurationMs,
+        audioBase64,
+        format: uri.endsWith(".caf") ? "caf" : "m4a",
+        durationMs,
       };
     }, []);
 

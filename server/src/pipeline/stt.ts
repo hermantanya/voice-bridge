@@ -2,24 +2,18 @@ import { File } from "node:buffer";
 
 import { getOpenAIClient } from "./openai.js";
 import {
-  mimeTypeForAudioFormat,
-  normalizeAudioFormat,
-} from "./audioFormat.js";
-import {
   normalizeDetectedLanguage,
   type SupportedLanguage,
 } from "./languageDetection.js";
 
-function whisperErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (
-    message.includes("could not be decoded") ||
-    message.includes("format is not supported")
-  ) {
-    return "Could not read that recording. Hold the button a little longer and try again.";
-  }
-  return message;
-}
+const MIME_BY_FORMAT: Record<string, string> = {
+  webm: "audio/webm",
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  mp4: "audio/mp4",
+  caf: "audio/x-caf",
+};
 
 export type TranscriptionResult = {
   text: string;
@@ -32,49 +26,42 @@ export async function transcribe(
   languageOverride?: string,
 ): Promise<TranscriptionResult> {
   const openai = getOpenAIClient();
-  const normalizedFormat = normalizeAudioFormat(format);
-  const mimeType = mimeTypeForAudioFormat(normalizedFormat);
-  const file = new File([audio], `audio.${normalizedFormat}`, {
-    type: mimeType,
-  });
+  const mimeType = MIME_BY_FORMAT[format] ?? "audio/webm";
+  const file = new File([audio], `audio.${format}`, { type: mimeType });
 
-  try {
-    if (languageOverride) {
-      const overrideLang = normalizeDetectedLanguage(languageOverride);
-      if (!overrideLang) {
-        throw new Error("sourceLangOverride must be en, he, or ru");
-      }
-
-      const response = await openai.audio.transcriptions.create({
-        file,
-        model: "whisper-1",
-        language: overrideLang,
-      });
-
-      return {
-        text: response.text.trim(),
-        detectedLang: overrideLang,
-      };
+  if (languageOverride) {
+    const overrideLang = normalizeDetectedLanguage(languageOverride);
+    if (!overrideLang) {
+      throw new Error("sourceLangOverride must be en, he, or ru");
     }
 
     const response = await openai.audio.transcriptions.create({
       file,
       model: "whisper-1",
-      response_format: "verbose_json",
+      language: overrideLang,
     });
-
-    const detectedLang = normalizeDetectedLanguage(response.language);
-    if (!detectedLang) {
-      throw new Error(
-        `Unsupported detected language: ${response.language ?? "unknown"}. Supported: English, Hebrew, Russian.`,
-      );
-    }
 
     return {
       text: response.text.trim(),
-      detectedLang,
+      detectedLang: overrideLang,
     };
-  } catch (error) {
-    throw new Error(whisperErrorMessage(error));
   }
+
+  const response = await openai.audio.transcriptions.create({
+    file,
+    model: "whisper-1",
+    response_format: "verbose_json",
+  });
+
+  const detectedLang = normalizeDetectedLanguage(response.language);
+  if (!detectedLang) {
+    throw new Error(
+      `Unsupported detected language: ${response.language ?? "unknown"}. Supported: English, Hebrew, Russian.`,
+    );
+  }
+
+  return {
+    text: response.text.trim(),
+    detectedLang,
+  };
 }

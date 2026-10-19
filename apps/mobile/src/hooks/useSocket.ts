@@ -83,8 +83,6 @@ type UsagePayload = {
   activeConversationMs?: number;
 };
 
-const MIN_AUDIO_BYTES = 512;
-
 function hasParticipantUsageMap(
   map: Record<string, number> | undefined,
 ): map is Record<string, number> {
@@ -453,23 +451,11 @@ export function useSocket({
         return;
       }
 
-      const trimmed = audioBase64.trim();
-      if (!trimmed) {
-        setErrorMessage("Recording was empty. Hold the button a little longer.");
-        return;
-      }
-
-      const byteLength = Math.floor((trimmed.length * 3) / 4);
-      if (byteLength < MIN_AUDIO_BYTES) {
-        setErrorMessage("Recording too short. Hold the button a little longer.");
-        return;
-      }
-
       pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
 
       setErrorMessage(null);
       socket.emit("audio_chunk", {
-        audioBase64: trimmed,
+        audioBase64,
         format,
         recordingDurationMs: pendingSpeechMsRef.current,
         recordingStartedAt,
