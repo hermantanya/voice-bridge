@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  check:
+  ship-gate:
+    name: Ship gate (npm run check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +24,23 @@ jobs:
         run: |
           npm ci --prefix server
           npm ci --prefix apps/mobile
+
+      - name: Assert ship-gate files exist
+        run: |
+          set -euo pipefail
+          required=(
+            apps/mobile/scripts/verify-regressions.mjs
+            apps/mobile/src/session/transcriptState.test.ts
+            server/src/ws/latency.integration.test.ts
+            server/src/ws/streamingPtt.integration.test.ts
+            server/src/ws/join-room.integration.test.ts
+          )
+          for path in "${required[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              echo "::error file=$path::Missing ship-gate file (CI would pass without this coverage)"
+              exit 1
+            fi
+          done
 
       - name: npm run check
         run: npm run check

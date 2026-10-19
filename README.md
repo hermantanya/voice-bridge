@@ -1,5 +1,7 @@
 # Voice Bridge
 
+[![check](https://github.com/hermantanya/voice-bridge/actions/workflows/check.yml/badge.svg)](https://github.com/hermantanya/voice-bridge/actions/workflows/check.yml)
+
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in yours.
 
 **v1.4 (current):** Everything in v1.3 plus **email sign-in**, **guest mode**, and **cloud profile sync** — Translate to, gender, and enrolled **cloned voice** follow your account across phone and web. Dev OTP codes on Railway until Resend is enabled for external beta.
@@ -221,6 +223,30 @@ npm run spike:voice
 `DELETE /api/voices/:voiceId`: remove enrolled voice from ElevenLabs.
 
 `GET /health`: server status.
+
+## Testing
+
+Every push and pull request to `main` runs the **Ship gate** GitHub Actions job: `npm run check` at the repo root (Node 20, `npm ci` in `server/` and `apps/mobile/`).
+
+| Command | What it runs |
+|---|---|
+| `npm run check` | Full ship gate: tests + verify + server typecheck |
+| `npm test` | Server integration/unit tests, then mobile unit tests |
+| `npm run verify` | Mobile layout/docs checks + **31** `verify-regressions` source suites (includes batch PTT `stopStreamingPtt` guard) |
+| `npm run check:regression` | Same 31 regression suites only (`apps/mobile/scripts/verify-regressions.mjs`) |
+| `npm run typecheck` | Server `tsc --noEmit` |
+
+**Server tests** (explicit list in `server/package.json`) include `latency.integration.test.ts`, `streamingPtt.integration.test.ts`, and `join-room.integration.test.ts`.
+
+**Mobile tests** include `transcriptState.test.ts` (PTT transcript dedupe / partner partial flush) plus session, hold-to-talk, and web mic coverage.
+
+CI fails the job if any of the ship-gate files above are deleted, if tests fail, if regression grep checks fail (for example `void stopStreamingPtt` without awaiting when batch uplink is off), or if TypeScript does not compile.
+
+Run locally before pushing:
+
+```bash
+npm run check
+```
 
 ## Security
 
