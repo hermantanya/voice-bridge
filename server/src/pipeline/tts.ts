@@ -22,6 +22,10 @@ export async function synthesize(
     targetLang?: string;
   } = {},
 ): Promise<Buffer> {
+  if (process.env.VOICE_BRIDGE_TEST_TRANSLATE === "1") {
+    return Buffer.alloc(0);
+  }
+
   const voiceId = options.voiceId?.trim();
   if (voiceId) {
     const language = normalizeLanguage(options.targetLang);

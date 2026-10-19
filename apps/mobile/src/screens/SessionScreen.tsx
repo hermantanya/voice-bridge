@@ -51,6 +51,7 @@ type SessionScreenProps = {
   turnParticipantId: string | null;
   turnPhase: TurnPhase;
   transcript: TranscriptEntry[];
+  partnerPartial?: { sourceText: string; translatedText: string } | null;
   myBillableMs: number;
   partnerBillableMs: number;
   sessionStartedAt: number | null;
@@ -105,6 +106,7 @@ export function SessionScreen({
   turnParticipantId,
   turnPhase,
   transcript,
+  partnerPartial = null,
   myBillableMs,
   partnerBillableMs,
   sessionStartedAt,
@@ -628,6 +630,18 @@ export function SessionScreen({
           <Text style={styles.hint}>Partner is speaking.</Text>
         )}
 
+        {partnerPartial?.translatedText ? (
+          <View style={styles.partialCard} accessibilityLiveRegion="polite">
+            <Text style={styles.partialLabel}>Partner (live)</Text>
+            {partnerPartial.sourceText ? (
+              <Text style={styles.partialSource}>{partnerPartial.sourceText}</Text>
+            ) : null}
+            <Text style={styles.partialTranslation}>
+              {partnerPartial.translatedText}
+            </Text>
+          </View>
+        ) : null}
+
         <TranscriptPanel entries={transcript} embedded />
 
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
@@ -893,6 +907,33 @@ const styles = StyleSheet.create({
   turnText: {
     fontSize: 16,
     fontWeight: "700",
+  },
+  partialCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    padding: 14,
+    marginBottom: 12,
+    gap: 6,
+  },
+  partialLabel: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  partialSource: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  partialTranslation: {
+    color: "#f8fafc",
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 22,
   },
   talkButtonWrap: {
     position: "relative",

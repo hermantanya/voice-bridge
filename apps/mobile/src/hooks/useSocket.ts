@@ -142,12 +142,23 @@ function readPartnerBillableMs(
     .reduce((sum, [, ms]) => sum + ms, 0);
 }
 
+export type PartialTranslationPayload = {
+  roomCode: string;
+  turnId: string;
+  fromParticipantId: string;
+  sourceText?: string;
+  translatedText: string;
+  targetLang?: string;
+  isPartial?: boolean;
+};
+
 type UseSocketOptions = {
   roomCode: string;
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
   elevenlabsVoiceId?: string | null;
   playTranslatedVoice?: boolean;
+  streamingPtt?: boolean;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
@@ -158,6 +169,7 @@ export function useSocket({
   speakerGender,
   elevenlabsVoiceId = null,
   playTranslatedVoice = true,
+  streamingPtt = false,
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
@@ -167,6 +179,7 @@ export function useSocket({
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
   const playTranslatedVoiceRef = useRef(playTranslatedVoice);
+  const streamingPttRef = useRef(streamingPtt);
   const transcriptTurnKeysRef = useRef(new Set<string>());
   const connectedRef = useRef(false);
 
@@ -184,6 +197,7 @@ export function useSocket({
         speakerGender: speakerGenderRef.current,
         elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
         playTranslatedVoice: playTranslatedVoiceRef.current,
+        streamingPtt: streamingPttRef.current ? true : undefined,
       }),
     );
   }, []);
@@ -308,6 +322,10 @@ export function useSocket({
   const [partnerBillableMs, setPartnerBillableMs] = useState(0);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [usageTick, setUsageTick] = useState(0);
+  const [partnerPartial, setPartnerPartial] = useState<{
+    sourceText: string;
+    translatedText: string;
+  } | null>(null);
 
   const isMyTurn =
     participantId !== null &&
@@ -364,6 +382,10 @@ export function useSocket({
   }, [playTranslatedVoice]);
 
   useEffect(() => {
+    streamingPttRef.current = streamingPtt;
+  }, [streamingPtt]);
+
+  useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
@@ -402,6 +424,7 @@ export function useSocket({
     setParticipants(0);
     setPartnerLang(null);
     setTranscript([]);
+    setPartnerPartial(null);
     transcriptTurnKeysRef.current.clear();
     setTotalActiveConversationMs(0);
     setMyBillableMs(0);
@@ -540,6 +563,90 @@ export function useSocket({
     [],
   );
 
+  const startStreamingPtt = useCallback((): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const socket = socketRef.current;
+      if (!socket?.connected || !streamingPttRef.current) {
+        resolve(false);
+        return;
+      }
+
+      socket.emit(
+        "streaming_ptt_start",
+        {},
+        (response?: { ok?: boolean; message?: string }) => {
+          if (response?.ok) {
+            resolve(true);
+            return;
+          }
+          if (response?.message) {
+            setErrorMessage(response.message);
+          }
+          resolve(false);
+        },
+      );
+    });
+  }, []);
+
+  const sendStreamingAudioChunk = useCallback(
+    (audioBase64: string, format: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected || !streamingPttRef.current) {
+        return;
+      }
+
+      socket.emit("streaming_audio_chunk", {
+        audioBase64,
+        format,
+      });
+    },
+    [],
+  );
+
+  const stopStreamingPtt = useCallback(
+    (
+      audioBase64: string,
+      format: string,
+      recordingDurationMs: number,
+      recordingStartedAt?: number,
+    ): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const socket = socketRef.current;
+        if (!socket?.connected || !streamingPttRef.current) {
+          resolve(false);
+          return;
+        }
+
+        pendingSpeechMsRef.current = Math.max(
+          0,
+          Math.round(recordingDurationMs),
+        );
+
+        socket.emit(
+          "streaming_ptt_stop",
+          {
+            audioBase64,
+            format,
+            recordingDurationMs: pendingSpeechMsRef.current,
+            recordingStartedAt,
+          },
+          (response?: { ok?: boolean; message?: string }) => {
+            if (response?.ok) {
+              setPartnerPartial(null);
+              resolve(true);
+              return;
+            }
+            if (response?.message) {
+              setErrorMessage(response.message);
+            }
+            resolve(false);
+          },
+        );
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!enabled || !roomCode) {
       disconnect();
@@ -625,8 +732,35 @@ export function useSocket({
       "turn_state",
       (payload: { roomCode: string } & TurnState) => {
         applyTurnState(payload);
+        if (payload.phase === "waiting") {
+          setPartnerPartial(null);
+        }
       },
     );
+
+    const applyPartnerPartial = (payload: PartialTranslationPayload) => {
+      if (payload.fromParticipantId === participantIdRef.current) {
+        return;
+      }
+      setPartnerPartial({
+        sourceText: payload.sourceText ?? "",
+        translatedText: payload.translatedText,
+      });
+    };
+
+    socket.on("partial_transcript", (payload: PartialTranslationPayload) => {
+      if (payload.fromParticipantId === participantIdRef.current) {
+        return;
+      }
+      setPartnerPartial((current) => ({
+        sourceText: payload.sourceText ?? current?.sourceText ?? "",
+        translatedText: current?.translatedText ?? "",
+      }));
+    });
+
+    socket.on("partial_translation", (payload: PartialTranslationPayload) => {
+      applyPartnerPartial(payload);
+    });
 
     const appendTranscriptIfNew = (
       direction: TranscriptEntry["direction"],
@@ -681,6 +815,7 @@ export function useSocket({
     );
 
     socket.on("translation_result", (payload: TranslationResult) => {
+      setPartnerPartial(null);
       setLastReceived(payload);
       if (payload.turnId) {
         const key = transcriptKey("received", payload.turnId);
@@ -756,7 +891,14 @@ export function useSocket({
 
   useEffect(() => {
     emitJoinRoom();
-  }, [emitJoinRoom, elevenlabsVoiceId, myLang, playTranslatedVoice, speakerGender]);
+  }, [
+    emitJoinRoom,
+    elevenlabsVoiceId,
+    myLang,
+    playTranslatedVoice,
+    speakerGender,
+    streamingPtt,
+  ]);
 
   return {
     status,
@@ -772,6 +914,7 @@ export function useSocket({
     lastSent,
     lastReceived,
     transcript,
+    partnerPartial,
     totalActiveConversationMs: displayTotalActiveConversationMs,
     myBillableMs,
     partnerBillableMs,
@@ -780,6 +923,9 @@ export function useSocket({
     claimTurn,
     releaseTurn,
     sendAudioChunk,
+    startStreamingPtt,
+    sendStreamingAudioChunk,
+    stopStreamingPtt,
     setErrorMessage,
   };
 };

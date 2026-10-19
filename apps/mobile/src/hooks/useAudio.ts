@@ -27,6 +27,10 @@ import {
   saveMicDeviceId,
   type MicrophoneDevice,
 } from "../web/microphoneDevices";
+import {
+  startStreamingPcmCapture,
+  type StreamingPcmCapture,
+} from "../web/streamingPcmCapture";
 
 type UseAudioOptions = {
   onAudioReady: (
@@ -35,6 +39,10 @@ type UseAudioOptions = {
     recordingDurationMs: number,
   ) => void;
   enabled?: boolean;
+  /** Web-only streaming uplink during hold (PCM16 chunks). */
+  streamingUplinkEnabled?: boolean;
+  onStreamingChunk?: (audioBase64: string, format: string) => void;
+  onStreamingRecordingStarted?: () => void;
 };
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -78,7 +86,13 @@ function getWebRecordingOptions(): { mimeType: string; format: string } {
 
 type NativeRecorder = InstanceType<typeof AudioModule.AudioRecorder>;
 
-export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
+export function useAudio({
+  onAudioReady,
+  enabled = true,
+  streamingUplinkEnabled = false,
+  onStreamingChunk,
+  onStreamingRecordingStarted,
+}: UseAudioOptions) {
   const recordingRef = useRef<NativeRecorder | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -95,8 +109,15 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   );
   const recordingStartedAtRef = useRef<number | null>(null);
   const onAudioReadyRef = useRef(onAudioReady);
+  const onStreamingChunkRef = useRef(onStreamingChunk);
+  const onStreamingRecordingStartedRef = useRef(onStreamingRecordingStarted);
+  const streamingCaptureRef = useRef<StreamingPcmCapture | null>(null);
   const enabledRef = useRef(enabled);
+  const streamingUplinkEnabledRef = useRef(streamingUplinkEnabled);
   enabledRef.current = enabled;
+  streamingUplinkEnabledRef.current = streamingUplinkEnabled;
+  onStreamingChunkRef.current = onStreamingChunk;
+  onStreamingRecordingStartedRef.current = onStreamingRecordingStarted;
 
   const [isRecording, setIsRecording] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(
@@ -131,6 +152,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     pendingStopResolveRef.current?.(false);
     pendingStopResolveRef.current = null;
     recordingStartedAtRef.current = null;
+    streamingCaptureRef.current?.stop();
+    streamingCaptureRef.current = null;
     setIsRecording(false);
 
     if (recorder && recorder.state !== "inactive") {
@@ -421,12 +444,27 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
         mediaStreamRef.current = stream;
         pendingStreamRef.current = null;
         mediaRecorderRef.current = recorder;
+
+        if (
+          streamingUplinkEnabledRef.current &&
+          onStreamingChunkRef.current
+        ) {
+          streamingCaptureRef.current?.stop();
+          streamingCaptureRef.current = startStreamingPcmCapture(
+            stream,
+            (pcm16Base64) => {
+              onStreamingChunkRef.current?.(pcm16Base64, "pcm16");
+            },
+          );
+        }
+
         recorder.start(250);
 
         if (webStopRequestedRef.current) {
           recorder.stop();
         } else {
           setIsRecording(true);
+          onStreamingRecordingStartedRef.current?.();
         }
       } finally {
         webStartInProgressRef.current = false;

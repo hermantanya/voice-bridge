@@ -169,7 +169,11 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ### Status
 
-📋 **Planned** — after v1.5 dogfood stability; does not block external beta checklist.
+🚧 **Phase 1 spike (web) — shipped behind flags** — OpenAI Realtime `intent=transcription` relay on server; web PCM uplink + partial UI; batch PTT default unchanged.
+
+- [x] **Server:** `STREAMING_PTT_ENABLED=1` + client `streamingPtt` on `join_room`; events `streaming_ptt_start` / `streaming_audio_chunk` / `streaming_ptt_stop`; emits `partial_transcript` + `partial_translation`; finalize + batch fallback via `audio_chunk` pipeline
+- [x] **Web client:** `EXPO_PUBLIC_STREAMING_PTT=1` or Settings **Streaming PTT (dev)**; PCM16 chunks during hold; partner **Partner (live)** banner on SessionScreen
+- [ ] **Phase 2+:** rate limits for partials, iOS chunked uplink, operator cost docs
 
 ---
 

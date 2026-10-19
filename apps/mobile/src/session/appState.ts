@@ -46,6 +46,7 @@ export function buildJoinRoomPayload(input: {
   speakLangOverride?: LanguageCode;
   elevenlabsVoiceId?: string | null;
   playTranslatedVoice?: boolean;
+  streamingPtt?: boolean;
 }) {
   const payload: {
     roomCode: string;
@@ -54,6 +55,7 @@ export function buildJoinRoomPayload(input: {
     speakLangOverride?: LanguageCode;
     elevenlabsVoiceId?: string;
     playTranslatedVoice?: boolean;
+    streamingPtt?: boolean;
   } = {
     roomCode: input.roomCode,
     hearLang: input.myLang,
@@ -70,6 +72,10 @@ export function buildJoinRoomPayload(input: {
 
   if (hasCustomVoice(input.elevenlabsVoiceId)) {
     payload.elevenlabsVoiceId = input.elevenlabsVoiceId!.trim();
+  }
+
+  if (input.streamingPtt) {
+    payload.streamingPtt = true;
   }
 
   return payload;

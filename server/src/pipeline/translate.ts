@@ -23,6 +23,10 @@ export async function translate(
   speakerGender?: SpeakerGender,
   addresseeGender?: SpeakerGender,
 ): Promise<string> {
+  if (process.env.VOICE_BRIDGE_TEST_TRANSLATE === "1") {
+    return `[${targetLang}] ${text}`;
+  }
+
   const openai = getOpenAIClient();
   const genderNote = buildGenderInstruction(speakerGender, addresseeGender);
 

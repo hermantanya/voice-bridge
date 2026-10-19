@@ -17,6 +17,7 @@ import {
 } from "./src/session/devicePrefsStorage";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp, shouldReleaseTurnAfterLocalStop } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
+import { isStreamingPttUplinkAvailable } from "./src/session/streamingPtt";
 import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
 import {
@@ -49,6 +50,7 @@ export default function App() {
   const [conversationMode, setConversationMode] =
     useState<ConversationMode>("push_to_talk");
   const [playTranslatedVoice, setPlayTranslatedVoice] = useState(true);
+  const [streamingPttDev, setStreamingPttDev] = useState(false);
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
   const [entryReady, setEntryReady] = useState(false);
@@ -61,6 +63,10 @@ export default function App() {
   const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
   const sessionReady = inSession && voiceProfile.loaded;
+  const streamingPttUplink = useMemo(
+    () => isStreamingPttUplinkAvailable(streamingPttDev),
+    [streamingPttDev],
+  );
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
   );
@@ -82,6 +88,7 @@ export default function App() {
         setSpeakerGender(prefs.speakerGender);
         setConversationMode(prefs.conversationMode);
         setPlayTranslatedVoice(prefs.playTranslatedVoice);
+        setStreamingPttDev(Boolean(prefs.streamingPttDev));
       }
       setIsGuest(guest);
       setEntryReady(true);
@@ -210,11 +217,15 @@ export default function App() {
       speakerGender: SpeakerGender;
       conversationMode: ConversationMode;
       playTranslatedVoice: boolean;
+      streamingPttDev?: boolean;
     }) => {
       setMyLang(settings.hearLang);
       setSpeakerGender(settings.speakerGender);
       setConversationMode(settings.conversationMode);
       setPlayTranslatedVoice(settings.playTranslatedVoice);
+      if (settings.streamingPttDev !== undefined) {
+        setStreamingPttDev(settings.streamingPttDev);
+      }
       if (auth.session) {
         void auth
           .updateProfile({
@@ -230,9 +241,10 @@ export default function App() {
         speakerGender: settings.speakerGender,
         conversationMode: settings.conversationMode,
         playTranslatedVoice: settings.playTranslatedVoice,
+        streamingPttDev: settings.streamingPttDev ?? streamingPttDev,
       });
     },
-    [auth.session, auth.updateProfile],
+    [auth.session, auth.updateProfile, streamingPttDev],
   );
 
   const handleSignOut = useCallback(async () => {
@@ -341,6 +353,7 @@ export default function App() {
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
     playTranslatedVoice,
+    streamingPtt: streamingPttUplink,
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
   });
@@ -352,6 +365,15 @@ export default function App() {
       const durationMs = holdStartedAt
         ? Math.max(recordingDurationMs, Date.now() - holdStartedAt)
         : recordingDurationMs;
+      if (streamingPttUplink) {
+        void socket.stopStreamingPtt(
+          audioBase64,
+          format,
+          durationMs,
+          holdStartedAt ?? undefined,
+        );
+        return;
+      }
       socket.sendAudioChunk(
         audioBase64,
         format,
@@ -359,12 +381,29 @@ export default function App() {
         holdStartedAt ?? undefined,
       );
     },
-    [socket.sendAudioChunk],
+    [socket.sendAudioChunk, socket.stopStreamingPtt, streamingPttUplink],
+  );
+
+  const handleStreamingRecordingStarted = useCallback(() => {
+    if (!streamingPttUplink) {
+      return;
+    }
+    void socket.startStreamingPtt();
+  }, [socket.startStreamingPtt, streamingPttUplink]);
+
+  const handleStreamingChunk = useCallback(
+    (audioBase64: string, format: string) => {
+      socket.sendStreamingAudioChunk(audioBase64, format);
+    },
+    [socket.sendStreamingAudioChunk],
   );
 
   const audio = useAudio({
     onAudioReady: handleAudioReady,
     enabled: sessionReady,
+    streamingUplinkEnabled: streamingPttUplink,
+    onStreamingChunk: handleStreamingChunk,
+    onStreamingRecordingStarted: handleStreamingRecordingStarted,
   });
 
   useEffect(() => {
@@ -533,6 +572,7 @@ export default function App() {
           speakerGender={speakerGender}
           conversationMode={conversationMode}
           playTranslatedVoice={playTranslatedVoice}
+          streamingPttDev={streamingPttDev}
           onCommitProfileSettings={handleCommitProfileSettings}
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
@@ -540,6 +580,7 @@ export default function App() {
           onRemoveVoice={handleRemoveVoice}
           onBack={() => setScreen("home")}
           showMicrophoneSettings={Platform.OS === "web"}
+          showStreamingPttDev={Platform.OS === "web"}
           microphoneDevices={audio.inputDevices}
           selectedMicrophoneId={audio.selectedDeviceId}
           onMicrophoneChange={audio.setSelectedDeviceId}
@@ -575,6 +616,7 @@ export default function App() {
           turnParticipantId={socket.turnParticipantId}
           turnPhase={socket.turnPhase}
           transcript={socket.transcript}
+          partnerPartial={socket.partnerPartial}
           myBillableMs={socket.myBillableMs}
           partnerBillableMs={socket.partnerBillableMs}
           sessionStartedAt={socket.sessionStartedAt}

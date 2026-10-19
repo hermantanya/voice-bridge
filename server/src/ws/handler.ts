@@ -28,6 +28,19 @@ import {
   reconcileParticipantsOnJoin,
   removeParticipant,
 } from "./roomParticipants.js";
+import { isStreamingPttAllowedForClient } from "../streaming/streamingPttConfig.js";
+import {
+  getDefaultRealtimeSessionFactory,
+  type RealtimeTranscriptionSessionFactory,
+} from "../streaming/realtimeTranscriptionSession.js";
+import {
+  type ActiveStreamingTurn,
+  emitPartialTranscript,
+  finalizeStreamingTurn,
+  maybeTranslatePartial,
+  startStreamingTurn,
+  type StreamingPttTurnContext,
+} from "../streaming/streamingPttTurn.js";
 
 type JoinRoomPayload = {
   roomCode: string;
@@ -39,16 +52,22 @@ type JoinRoomPayload = {
   conversationMode?: ConversationMode;
   /** When false, listener gets transcript only (no TTS). Default true. */
   playTranslatedVoice?: boolean;
+  /** Client opt-in when EXPO_PUBLIC_STREAMING_PTT or dev toggle (server also gates). */
+  streamingPtt?: boolean;
 };
 
 export type TranslationPipelineRunner = typeof runTranslationPipeline;
 
 export type SocketHandlerDeps = {
   runTranslationPipeline: TranslationPipelineRunner;
+  createRealtimeTranscriptionSession?: RealtimeTranscriptionSessionFactory;
 };
 
 export function createDefaultSocketHandlerDeps(): SocketHandlerDeps {
-  return { runTranslationPipeline };
+  return {
+    runTranslationPipeline,
+    createRealtimeTranscriptionSession: getDefaultRealtimeSessionFactory(),
+  };
 }
 
 type AudioChunkPayload = {
@@ -79,9 +98,19 @@ type RoomState = {
 };
 
 const rooms = new Map<string, RoomState>();
+const activeStreamingTurns = new Map<string, ActiveStreamingTurn>();
+
+/** Clears streaming turn state (integration tests only). */
+export function resetStreamingTurnsForTests(): void {
+  for (const turn of activeStreamingTurns.values()) {
+    turn.session.close();
+  }
+  activeStreamingTurns.clear();
+}
 
 /** Clears in-memory room state (integration tests only). */
 export function resetRoomsForTests(): void {
+  resetStreamingTurnsForTests();
   rooms.clear();
 }
 
@@ -201,7 +230,7 @@ function emitUsageUpdate(io: Server, roomCode: string, room: RoomState): void {
 
 type SpeechRouting = "push_to_talk" | "hands_free";
 
-async function processSpeechPayload(
+export async function processSpeechPayload(
   io: Server,
   socket: Socket,
   room: RoomState,
@@ -395,6 +424,10 @@ export function registerSocketHandlers(
   deps: SocketHandlerDeps = createDefaultSocketHandlerDeps(),
 ): void {
   const { runTranslationPipeline: runPipeline } = deps;
+  const createRealtimeSession =
+    deps.createRealtimeTranscriptionSession ??
+    getDefaultRealtimeSessionFactory();
+
   io.on("connection", (socket: Socket) => {
     console.log(`client connected: ${socket.id}`);
 
@@ -408,6 +441,7 @@ export function registerSocketHandlers(
         elevenlabsVoiceId,
         conversationMode: conversationModeRaw,
         playTranslatedVoice,
+        streamingPtt,
       } = payload;
 
       if (!roomCode?.trim()) {
@@ -466,6 +500,11 @@ export function registerSocketHandlers(
         socket.data.playTranslatedVoice = false;
       } else {
         delete socket.data.playTranslatedVoice;
+      }
+      if (isStreamingPttAllowedForClient(streamingPtt === true)) {
+        socket.data.streamingPtt = true;
+      } else {
+        delete socket.data.streamingPtt;
       }
 
       ensureSessionStarted(room);
@@ -633,6 +672,217 @@ export function registerSocketHandlers(
       void handleSpeechEvent(payload, "push_to_talk");
     });
 
+    function buildStreamingTurnContext(
+      code: string,
+      room: RoomState,
+      turnId: string,
+      speechMs: number,
+      recordingStartedAt?: number,
+    ): StreamingPttTurnContext {
+      return {
+        io,
+        socket,
+        roomCode: code,
+        turnId,
+        speechMs,
+        recordingStartedAt,
+        runBatchFallback: async (fallbackPayload) => {
+          room.turnParticipantId = socket.id;
+          room.phase = "speaking";
+          await processSpeechPayload(
+            io,
+            socket,
+            room,
+            code,
+            fallbackPayload,
+            "push_to_talk",
+            runPipeline,
+          );
+        },
+        openTurnFloor: () => openTurnFloor(io, code, room),
+        setProcessingPhase: () => {
+          room.phase = "processing";
+          emitTurnState(io, code, room);
+        },
+        emitUsageUpdate: () => emitUsageUpdate(io, code, room),
+        startActivePipeline: (pipelineStartMs) => {
+          startActivePipeline(room.activeConversation, socket.id, pipelineStartMs);
+        },
+        closeActivePipeline: () => {
+          closeActivePipeline(room.activeConversation, socket.id);
+        },
+        recordTurnUsage: (turnActiveMs) => {
+          recordParticipantTurnUsage(room, socket.id, turnActiveMs);
+        },
+        buildUsagePayload: () => buildUsagePayload(room),
+      };
+    }
+
+    socket.on("streaming_ptt_start", async (_payload, callback) => {
+      const code = socket.data.roomCode as string | undefined;
+      if (!code || !socket.data.streamingPtt) {
+        callback?.({ ok: false, message: "Streaming PTT not enabled" });
+        return;
+      }
+
+      const room = rooms.get(code);
+      if (!room) {
+        callback?.({ ok: false, message: "Room not found" });
+        return;
+      }
+
+      if (room.phase !== "speaking" || room.turnParticipantId !== socket.id) {
+        callback?.({ ok: false, message: "Not your turn" });
+        return;
+      }
+
+      const apiKey = process.env.OPENAI_API_KEY?.trim();
+      if (!apiKey) {
+        callback?.({ ok: false, message: "Streaming PTT unavailable" });
+        return;
+      }
+
+      const existing = activeStreamingTurns.get(socket.id);
+      existing?.session.close();
+
+      const turnId = `${socket.id}-${Date.now()}`;
+      const sourceLangHint = socket.data.speakLangOverride as string | undefined;
+      let activeTurn: ActiveStreamingTurn;
+
+      const session = createRealtimeSession(
+        apiKey,
+        {
+          onDelta: (_delta, accumulated) => {
+            const turn = activeStreamingTurns.get(socket.id);
+            if (!turn || turn.turnId !== turnId) {
+              return;
+            }
+            turn.accumulatedSource = accumulated;
+            const ctx = buildStreamingTurnContext(code, room, turnId, 0);
+            emitPartialTranscript(ctx, accumulated);
+            void (async () => {
+              const socketsInRoom = await io.in(code).fetchSockets();
+              const listener = socketsInRoom.find((s) => s.id !== socket.id);
+              const targetLang = resolveTargetLanguage(
+                listener?.data.hearLang as string | undefined,
+              );
+              await maybeTranslatePartial(turn, ctx, targetLang);
+            })();
+          },
+          onError: (message) => {
+            console.warn(`streaming ASR for ${socket.id}: ${message}`);
+            const turn = activeStreamingTurns.get(socket.id);
+            if (turn) {
+              turn.streamingFailed = true;
+            }
+          },
+        },
+        sourceLangHint,
+      );
+
+      activeTurn = {
+        turnId,
+        session,
+        accumulatedSource: "",
+        lastTranslatedSource: "",
+        lastTranslateAtMs: 0,
+        translateInFlight: false,
+        streamingFailed: false,
+        sourceLangHint,
+      };
+      activeStreamingTurns.set(socket.id, activeTurn);
+
+      try {
+        await startStreamingTurn(session);
+        callback?.({ ok: true, turnId });
+      } catch (error) {
+        activeStreamingTurns.delete(socket.id);
+        session.close();
+        callback?.({
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not start streaming session",
+        });
+      }
+    });
+
+    socket.on("streaming_audio_chunk", (payload: { audioBase64?: string; format?: string }) => {
+      const code = socket.data.roomCode as string | undefined;
+      if (!code || !socket.data.streamingPtt) {
+        return;
+      }
+
+      const turn = activeStreamingTurns.get(socket.id);
+      if (!turn || !payload?.audioBase64) {
+        return;
+      }
+
+      const rateLimitMessage = rejectIfAudioLimited(socket.id, rateLimits);
+      if (rateLimitMessage) {
+        socket.emit("error", { message: rateLimitMessage });
+        return;
+      }
+
+      const format = payload.format ?? "pcm16";
+      if (format === "pcm16") {
+        turn.session.appendPcm16Base64(payload.audioBase64);
+      }
+    });
+
+    socket.on("streaming_ptt_stop", async (payload: AudioChunkPayload, callback) => {
+      const code = socket.data.roomCode as string | undefined;
+      if (!code || !socket.data.streamingPtt) {
+        callback?.({ ok: false, message: "Streaming PTT not enabled" });
+        return;
+      }
+
+      const room = rooms.get(code);
+      if (!room) {
+        callback?.({ ok: false, message: "Room not found" });
+        return;
+      }
+
+      if (room.phase !== "speaking" || room.turnParticipantId !== socket.id) {
+        callback?.({ ok: false, message: "Not your turn" });
+        return;
+      }
+
+      const turn = activeStreamingTurns.get(socket.id);
+      if (!turn) {
+        callback?.({ ok: false, message: "No active streaming session" });
+        return;
+      }
+
+      activeStreamingTurns.delete(socket.id);
+
+      const speechMs = Math.max(0, Math.round(payload.recordingDurationMs ?? 0));
+      const ctx = buildStreamingTurnContext(
+        code,
+        room,
+        turn.turnId,
+        speechMs,
+        payload.recordingStartedAt,
+      );
+
+      try {
+        await finalizeStreamingTurn(turn, ctx, {
+          audioBase64: payload.audioBase64,
+          format: payload.format,
+          recordingDurationMs: payload.recordingDurationMs,
+        });
+        callback?.({ ok: true });
+      } catch (error) {
+        openTurnFloor(io, code, room);
+        callback?.({
+          ok: false,
+          message:
+            error instanceof Error ? error.message : "Streaming stop failed",
+        });
+      }
+    });
+
     socket.on("utterance", (payload: AudioChunkPayload) => {
       if (getSocketConversationMode(socket) !== "hands_free") {
         socket.emit("error", {
@@ -646,6 +896,9 @@ export function registerSocketHandlers(
 
     socket.on("disconnect", () => {
       const code = socket.data.roomCode as string | undefined;
+      const streamingTurn = activeStreamingTurns.get(socket.id);
+      streamingTurn?.session.close();
+      activeStreamingTurns.delete(socket.id);
 
       if (code && rooms.has(code)) {
         const room = rooms.get(code)!;

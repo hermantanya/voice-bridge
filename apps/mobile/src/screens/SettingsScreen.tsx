@@ -19,6 +19,7 @@ import {
   type SpeakerGender,
 } from "../config";
 import { isHandsFreeComingSoon } from "../session/conversationMode";
+import { isStreamingPttEnvEnabled } from "../session/streamingPtt";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { playVoicePreviewAudio } from "../session/voicePreviewPlayback";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
@@ -28,11 +29,13 @@ type SettingsScreenProps = {
   speakerGender: SpeakerGender;
   conversationMode: ConversationMode;
   playTranslatedVoice: boolean;
+  streamingPttDev?: boolean;
   onCommitProfileSettings?: (settings: {
     hearLang: LanguageCode;
     speakerGender: SpeakerGender;
     conversationMode: ConversationMode;
     playTranslatedVoice: boolean;
+    streamingPttDev?: boolean;
   }) => void;
   voiceStatus: VoiceProfileStatus;
   elevenlabsVoiceId?: string | null;
@@ -40,6 +43,7 @@ type SettingsScreenProps = {
   onRemoveVoice: () => Promise<void>;
   onBack: () => void;
   showMicrophoneSettings?: boolean;
+  showStreamingPttDev?: boolean;
   microphoneDevices?: MicrophoneDevice[];
   selectedMicrophoneId?: string | null;
   onMicrophoneChange?: (deviceId: string) => void;
@@ -58,6 +62,7 @@ export function SettingsScreen({
   speakerGender,
   conversationMode,
   playTranslatedVoice,
+  streamingPttDev = false,
   onCommitProfileSettings,
   voiceStatus,
   elevenlabsVoiceId,
@@ -65,6 +70,7 @@ export function SettingsScreen({
   onRemoveVoice,
   onBack,
   showMicrophoneSettings = false,
+  showStreamingPttDev = false,
   microphoneDevices = [],
   selectedMicrophoneId = null,
   onMicrophoneChange,
@@ -87,6 +93,7 @@ export function SettingsScreen({
   const [draftPlayTranslatedVoice, setDraftPlayTranslatedVoice] = useState(
     playTranslatedVoice,
   );
+  const [draftStreamingPttDev, setDraftStreamingPttDev] = useState(streamingPttDev);
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
     selectedMicrophoneId,
   );
@@ -95,6 +102,7 @@ export function SettingsScreen({
     speakerGender,
     conversationMode,
     playTranslatedVoice,
+    streamingPttDev,
   });
 
   useEffect(() => {
@@ -109,13 +117,23 @@ export function SettingsScreen({
     setDraftPlayTranslatedVoice((draft) =>
       draft === prev.playTranslatedVoice ? playTranslatedVoice : draft,
     );
+    setDraftStreamingPttDev((draft) =>
+      draft === prev.streamingPttDev ? streamingPttDev : draft,
+    );
     syncedProfileRef.current = {
       myLang,
       speakerGender,
       conversationMode,
       playTranslatedVoice,
+      streamingPttDev,
     };
-  }, [conversationMode, myLang, playTranslatedVoice, speakerGender]);
+  }, [
+    conversationMode,
+    myLang,
+    playTranslatedVoice,
+    speakerGender,
+    streamingPttDev,
+  ]);
 
   useEffect(() => {
     setPreviewText(null);
@@ -127,13 +145,15 @@ export function SettingsScreen({
       draftLang !== myLang ||
       draftGender !== speakerGender ||
       draftConversationMode !== conversationMode ||
-      draftPlayTranslatedVoice !== playTranslatedVoice
+      draftPlayTranslatedVoice !== playTranslatedVoice ||
+      draftStreamingPttDev !== streamingPttDev
     ) {
       onCommitProfileSettings?.({
         hearLang: draftLang,
         speakerGender: draftGender,
         conversationMode: draftConversationMode,
         playTranslatedVoice: draftPlayTranslatedVoice,
+        streamingPttDev: draftStreamingPttDev,
       });
     }
     if (
@@ -272,6 +292,54 @@ export function SettingsScreen({
           </Text>
         ) : null}
       </View>
+
+      {showStreamingPttDev && !isStreamingPttEnvEnabled() ? (
+        <>
+          <Text style={[styles.title, styles.sectionTitle]}>Developer</Text>
+          <Text style={styles.subtitle}>
+            Streaming push-to-talk (web spike): live partial transcripts while
+            holding the button. Requires STREAMING_PTT_ENABLED=1 on the server.
+          </Text>
+          <View style={styles.card}>
+            {[
+              {
+                value: true,
+                label: "Streaming PTT (dev)",
+                description:
+                  "Send PCM chunks during hold; batch PTT on iOS unchanged.",
+              },
+              {
+                value: false,
+                label: "Batch PTT",
+                description: "Default — one upload after release.",
+              },
+            ].map((option) => {
+              const active = option.value === draftStreamingPttDev;
+              return (
+                <Pressable
+                  key={option.label}
+                  style={[styles.option, active && styles.optionActive]}
+                  onPress={() => setDraftStreamingPttDev(option.value)}
+                >
+                  <Text
+                    style={[styles.optionText, active && styles.optionTextActive]}
+                  >
+                    {option.label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.conversationOptionDescription,
+                      active && styles.conversationOptionDescriptionActive,
+                    ]}
+                  >
+                    {option.description}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
       <Text style={[styles.title, styles.sectionTitle]}>Incoming translations</Text>
       <Text style={styles.subtitle}>
