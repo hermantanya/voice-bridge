@@ -390,6 +390,13 @@ export default function App() {
     socket.isOpenTurn,
   ]);
 
+  const handleEndSpeaking = useCallback(async () => {
+    if (audio.isRecording) {
+      await audio.stopRecording();
+    }
+    await socket.releaseTurn();
+  }, [audio.isRecording, audio.stopRecording, socket.releaseTurn]);
+
   const handleLeaveSession = useCallback(() => {
     audio.releaseMicrophone();
     socket.disconnect();
@@ -489,6 +496,7 @@ export default function App() {
           sessionStartedAt={socket.sessionStartedAt}
           onStartRecording={handleStartRecording}
           onStopRecording={audio.stopRecording}
+          onEndSpeaking={handleEndSpeaking}
           onLeave={handleLeaveSession}
         />
       );
@@ -528,6 +536,7 @@ export default function App() {
     audio.selectedDeviceId,
     audio.setSelectedDeviceId,
     audio.stopRecording,
+    handleEndSpeaking,
     handleLeaveSession,
     handleCommitProfileSettings,
     handleRemoveVoice,

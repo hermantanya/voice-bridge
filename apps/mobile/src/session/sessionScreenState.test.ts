@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canStartTalking, getTurnLabel } from "./sessionScreenState.js";
+import {
+  canStartTalking,
+  getSelfMicLabel,
+  getTurnLabel,
+} from "./sessionScreenState.js";
 
 test("getTurnLabel shows waiting for partner when alone in room", () => {
   assert.equal(
@@ -50,6 +54,39 @@ test("canStartTalking requires two participants", () => {
       isMyTurn: false,
     }),
     true,
+  );
+});
+
+test("getSelfMicLabel reflects mute state", () => {
+  assert.equal(getSelfMicLabel(false), "You're live");
+  assert.equal(getSelfMicLabel(true), "You're muted");
+});
+
+test("getTurnLabel shows muted when self-muted", () => {
+  assert.equal(
+    getTurnLabel({
+      participants: 2,
+      isProcessing: false,
+      isMyTurn: false,
+      isOpenTurn: true,
+      isSelfMuted: true,
+    }),
+    "You're muted",
+  );
+});
+
+test("canStartTalking is false when self-muted", () => {
+  assert.equal(
+    canStartTalking({
+      status: "connected",
+      participants: 2,
+      isProcessing: false,
+      isRecording: false,
+      isOpenTurn: true,
+      isMyTurn: false,
+      isSelfMuted: true,
+    }),
+    false,
   );
 });
 

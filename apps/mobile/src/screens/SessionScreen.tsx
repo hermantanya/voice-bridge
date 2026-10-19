@@ -16,6 +16,7 @@ import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
 import type { TranscriptEntry, TranslationResult } from "../hooks/useSocket";
 import {
   canStartTalking,
+  getSelfMicLabel,
   getTurnLabel,
 } from "../session/sessionScreenState";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
@@ -45,7 +46,8 @@ type SessionScreenProps = {
   partnerBillableMs: number;
   sessionStartedAt: number | null;
   onStartRecording: (stillHolding: () => boolean) => Promise<void>;
-  onStopRecording: () => void;
+  onStopRecording: () => void | Promise<void>;
+  onEndSpeaking?: () => Promise<void>;
   onLeave: () => void;
 };
 
@@ -98,8 +100,10 @@ export function SessionScreen({
   sessionStartedAt,
   onStartRecording,
   onStopRecording,
+  onEndSpeaking,
   onLeave,
 }: SessionScreenProps) {
+  const [selfMuted, setSelfMuted] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const holdingRef = useRef(false);
@@ -124,13 +128,17 @@ export function SessionScreen({
     isRecording,
     isOpenTurn,
     isMyTurn,
+    isSelfMuted: selfMuted,
   });
+
+  const selfMicLabel = getSelfMicLabel(selfMuted);
 
   const turnLabel = getTurnLabel({
     participants,
     isProcessing,
     isMyTurn,
     isOpenTurn,
+    isSelfMuted: selfMuted,
   });
 
   const turnColor = (() => {
@@ -306,7 +314,33 @@ export function SessionScreen({
     }
   }, [isRecording, onStopRecording]);
 
+  const handleToggleSelfMute = useCallback(async () => {
+    if (selfMuted) {
+      setSelfMuted(false);
+      return;
+    }
+
+    holdingRef.current = false;
+    try {
+      setRecordError(null);
+      await stopTalking();
+      if (onEndSpeaking) {
+        await onEndSpeaking();
+      }
+    } catch (error) {
+      setRecordError(
+        error instanceof Error ? error.message : "Could not stop speaking",
+      );
+      return;
+    }
+    setSelfMuted(true);
+  }, [onEndSpeaking, selfMuted, stopTalking]);
+
   const handleTalkStart = async () => {
+    if (selfMuted) {
+      return;
+    }
+
     if (isRecording) {
       await stopTalking();
       return;
@@ -376,25 +410,32 @@ export function SessionScreen({
           styles.talkButton,
           isRecording && styles.talkButtonActive,
           isProcessing && styles.talkButtonProcessing,
-          !canTalk && !isRecording && !isProcessing && styles.talkButtonDisabled,
+          (selfMuted || (!canTalk && !isRecording && !isProcessing)) &&
+            styles.talkButtonDisabled,
         ]}
         onPressIn={Platform.OS === "web" ? undefined : handleTalkStart}
         onPressOut={Platform.OS === "web" ? undefined : handleTalkEnd}
         onPointerDown={Platform.OS === "web" ? () => void handleTalkStart() : undefined}
         onPointerUp={Platform.OS === "web" ? handleTalkEnd : undefined}
         onPointerLeave={Platform.OS === "web" ? handleTalkEnd : undefined}
-        disabled={Platform.OS !== "web" && !canTalk && !isRecording}
+        disabled={
+          selfMuted || (Platform.OS !== "web" && !canTalk && !isRecording)
+        }
         accessibilityRole="button"
         accessibilityLabel={
-          isRecording
-            ? "Listening, release to stop"
-            : isProcessing
-              ? "Translating"
-              : isMyTurn || isOpenTurn
-                ? "Hold to talk"
-                : "Partner is speaking"
+          selfMuted
+            ? "Hold to talk disabled while you are muted"
+            : isRecording
+              ? "Listening, release to stop"
+              : isProcessing
+                ? "Translating"
+                : isMyTurn || isOpenTurn
+                  ? "Hold to talk"
+                  : "Partner is speaking"
         }
-        accessibilityState={{ disabled: !canTalk && !isRecording }}
+        accessibilityState={{
+          disabled: selfMuted || (!canTalk && !isRecording),
+        }}
       >
         {isRecording ? (
           <View style={styles.talkButtonContent}>
@@ -406,6 +447,8 @@ export function SessionScreen({
             <ActivityIndicator color="#ffffff" />
             <Text style={styles.talkButtonSubtext}>Translating...</Text>
           </View>
+        ) : selfMuted ? (
+          <Text style={styles.talkButtonText}>Muted</Text>
         ) : (
           <Text style={styles.talkButtonText}>
             {isMyTurn || isOpenTurn ? "Hold to talk" : "Partner is speaking"}
@@ -426,6 +469,53 @@ export function SessionScreen({
       <View style={styles.header}>
         <Text style={styles.title}>Session</Text>
         <Text style={styles.roomCodeInline}>{roomCode}</Text>
+      </View>
+
+      <View
+        style={[
+          styles.micStatusBanner,
+          selfMuted ? styles.micStatusBannerMuted : styles.micStatusBannerLive,
+        ]}
+        accessibilityRole="text"
+        accessibilityLabel={selfMicLabel}
+      >
+        <View
+          style={[
+            styles.micStatusDot,
+            selfMuted ? styles.micStatusDotMuted : styles.micStatusDotLive,
+          ]}
+        />
+        <View style={styles.micStatusCopy}>
+          <Text style={styles.micStatusTitle}>{selfMicLabel}</Text>
+          <Text style={styles.micStatusHint}>
+            {selfMuted
+              ? "Your mic is off. Unmute to use hold to talk."
+              : "Your mic can send when you hold to talk."}
+          </Text>
+        </View>
+        <Pressable
+          style={[
+            styles.micToggleButton,
+            selfMuted && styles.micToggleButtonUnmute,
+          ]}
+          onPress={() => {
+            void handleToggleSelfMute();
+          }}
+          accessibilityRole="switch"
+          accessibilityLabel={
+            selfMuted ? "Unmute yourself" : "Mute yourself"
+          }
+          accessibilityState={{ checked: !selfMuted }}
+        >
+          <Text
+            style={[
+              styles.micToggleButtonText,
+              selfMuted && styles.micToggleButtonTextUnmute,
+            ]}
+          >
+            {selfMuted ? "Unmute" : "Mute"}
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.talkSection}>
@@ -506,6 +596,10 @@ export function SessionScreen({
             Waiting for a second participant to join. Both devices must use the
             same server ({SERVER_URL.replace(/^https?:\/\//, "")}).
           </Text>
+        ) : selfMuted ? (
+          <Text style={styles.hint} numberOfLines={2}>
+            You are muted. Tap Unmute above when you want to speak.
+          </Text>
         ) : isMyTurn || isOpenTurn ? (
           <Text style={styles.hint} numberOfLines={2}>
             Hold to talk.
@@ -542,6 +636,70 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 12,
     gap: 8,
+  },
+  micStatusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  micStatusBannerLive: {
+    backgroundColor: "#14532d",
+    borderColor: "#22c55e",
+  },
+  micStatusBannerMuted: {
+    backgroundColor: "#334155",
+    borderColor: "#64748b",
+  },
+  micStatusDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    flexShrink: 0,
+  },
+  micStatusDotLive: {
+    backgroundColor: "#4ade80",
+  },
+  micStatusDotMuted: {
+    backgroundColor: "#94a3b8",
+  },
+  micStatusCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  micStatusTitle: {
+    color: "#f8fafc",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  micStatusHint: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  micToggleButton: {
+    backgroundColor: "#0f172a",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#475569",
+  },
+  micToggleButtonUnmute: {
+    backgroundColor: "#22c55e",
+    borderColor: "#16a34a",
+  },
+  micToggleButtonText: {
+    color: "#f8fafc",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  micToggleButtonTextUnmute: {
+    color: "#0f172a",
   },
   talkSection: {
     marginBottom: 12,

@@ -141,7 +141,7 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ### Phased delivery
 
-1. [ ] **Self-mute + indicator** on current PTT session (validate UX and a11y)
+1. [x] **Self-mute + indicator** on current PTT session (validate UX and a11y)
 2. [ ] **Server utterance routing** (Option A) behind mode flag
 3. [ ] **Client VAD** wired to utterance send when hands-free + live
 4. [ ] **Settings mode toggle** + dogfood on phone + web
