@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -16,6 +17,7 @@ import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
 import type { TranscriptEntry, TranslationResult } from "../hooks/useSocket";
 import {
   canStartTalking,
+  getSelfMicHint,
   getSelfMicLabel,
   getTurnLabel,
 } from "../session/sessionScreenState";
@@ -105,6 +107,8 @@ export function SessionScreen({
 }: SessionScreenProps) {
   const [selfMuted, setSelfMuted] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const stackMicBanner = windowWidth < 520;
   const [nowMs, setNowMs] = useState(() => Date.now());
   const holdingRef = useRef(false);
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -132,6 +136,7 @@ export function SessionScreen({
   });
 
   const selfMicLabel = getSelfMicLabel(selfMuted);
+  const selfMicHint = getSelfMicHint(selfMuted);
 
   const turnLabel = getTurnLabel({
     participants,
@@ -469,33 +474,34 @@ export function SessionScreen({
       <View style={styles.header}>
         <Text style={styles.title}>Session</Text>
         <Text style={styles.roomCodeInline}>{roomCode}</Text>
+        <Text style={styles.modeSubtitle}>Push-to-talk (hold button to speak)</Text>
       </View>
 
       <View
         style={[
           styles.micStatusBanner,
+          stackMicBanner && styles.micStatusBannerStack,
           selfMuted ? styles.micStatusBannerMuted : styles.micStatusBannerLive,
         ]}
-        accessibilityRole="text"
-        accessibilityLabel={selfMicLabel}
+        accessibilityRole="summary"
+        accessibilityLabel={`${selfMicLabel}. ${selfMicHint}`}
       >
-        <View
-          style={[
-            styles.micStatusDot,
-            selfMuted ? styles.micStatusDotMuted : styles.micStatusDotLive,
-          ]}
-        />
-        <View style={styles.micStatusCopy}>
-          <Text style={styles.micStatusTitle}>{selfMicLabel}</Text>
-          <Text style={styles.micStatusHint}>
-            {selfMuted
-              ? "Your mic is off. Unmute to use hold to talk."
-              : "Your mic can send when you hold to talk."}
-          </Text>
+        <View style={styles.micStatusHeaderRow}>
+          <View
+            style={[
+              styles.micStatusDot,
+              selfMuted ? styles.micStatusDotMuted : styles.micStatusDotLive,
+            ]}
+          />
+          <View style={styles.micStatusCopy}>
+            <Text style={styles.micStatusTitle}>{selfMicLabel}</Text>
+            <Text style={styles.micStatusHint}>{selfMicHint}</Text>
+          </View>
         </View>
         <Pressable
           style={[
             styles.micToggleButton,
+            stackMicBanner && styles.micToggleButtonStacked,
             selfMuted && styles.micToggleButtonUnmute,
           ]}
           onPress={() => {
@@ -598,7 +604,7 @@ export function SessionScreen({
           </Text>
         ) : selfMuted ? (
           <Text style={styles.hint} numberOfLines={2}>
-            You are muted. Tap Unmute above when you want to speak.
+            Mic is off. Tap Unmute above, then hold the button to speak.
           </Text>
         ) : isMyTurn || isOpenTurn ? (
           <Text style={styles.hint} numberOfLines={2}>
@@ -640,12 +646,23 @@ const styles = StyleSheet.create({
   micStatusBanner: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 12,
+  },
+  micStatusBannerStack: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  micStatusHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    flex: 1,
   },
   micStatusBannerLive: {
     backgroundColor: "#14532d",
@@ -688,6 +705,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 1,
     borderColor: "#475569",
+    flexShrink: 0,
+  },
+  micToggleButtonStacked: {
+    alignSelf: "stretch",
+    alignItems: "center",
   },
   micToggleButtonUnmute: {
     backgroundColor: "#22c55e",
@@ -715,6 +737,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 2,
+  },
+  modeSubtitle: {
+    color: "#94a3b8",
+    fontSize: 14,
+    lineHeight: 20,
   },
   statsCard: {
     backgroundColor: "#1e293b",

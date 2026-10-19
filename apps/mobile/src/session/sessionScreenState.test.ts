@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   canStartTalking,
+  getSelfMicHint,
   getSelfMicLabel,
   getTurnLabel,
 } from "./sessionScreenState.js";
@@ -58,11 +59,16 @@ test("canStartTalking requires two participants", () => {
 });
 
 test("getSelfMicLabel reflects mute state", () => {
-  assert.equal(getSelfMicLabel(false), "You're live");
-  assert.equal(getSelfMicLabel(true), "You're muted");
+  assert.equal(getSelfMicLabel(false), "Mic on");
+  assert.equal(getSelfMicLabel(true), "Mic off");
 });
 
-test("getTurnLabel shows muted when self-muted", () => {
+test("getSelfMicHint explains push-to-talk vs muted", () => {
+  assert.match(getSelfMicHint(false), /Push-to-talk/i);
+  assert.match(getSelfMicHint(true), /Unmute/i);
+});
+
+test("getTurnLabel shows mic off when self-muted", () => {
   assert.equal(
     getTurnLabel({
       participants: 2,
@@ -71,7 +77,7 @@ test("getTurnLabel shows muted when self-muted", () => {
       isOpenTurn: true,
       isSelfMuted: true,
     }),
-    "You're muted",
+    "Mic off",
   );
 });
 

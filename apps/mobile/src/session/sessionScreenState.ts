@@ -1,8 +1,15 @@
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 export type TurnPhase = "waiting" | "speaking" | "processing";
 
+/** Phase 1: unmuted = allowed to use hold-to-talk (not hands-free yet). */
 export function getSelfMicLabel(isSelfMuted: boolean): string {
-  return isSelfMuted ? "You're muted" : "You're live";
+  return isSelfMuted ? "Mic off" : "Mic on";
+}
+
+export function getSelfMicHint(isSelfMuted: boolean): string {
+  return isSelfMuted
+    ? "Muted — tap Unmute, then hold to talk."
+    : "Push-to-talk — hold the button while you speak. Hands-free comes later.";
 }
 
 export function getTurnLabel(input: {
@@ -16,7 +23,7 @@ export function getTurnLabel(input: {
     return "Waiting for partner";
   }
   if (input.isSelfMuted) {
-    return "You're muted";
+    return "Mic off";
   }
   if (input.isProcessing) {
     return "Translating...";
