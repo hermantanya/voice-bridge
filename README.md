@@ -300,7 +300,8 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 
 | Version | Features |
 |---|---|
-| v2.0 | Hands-free (VAD) + **self-mute** (clear Live/Muted); **per-speaker utterances** when hands-free (overlap OK); Settings **push-to-talk vs hands-free**; pass-through languages later |
+| **v2.0** (standalone) | **Push-to-talk** + **self-mute** (Live/Muted); iOS WAV upload reliability; server `utterance` path kept for integrations — **no in-app hands-free VAD** |
+| v2.x call add-on | **Future:** Zoom / WhatsApp / video-call integration using server utterance routing (not the standalone app mic path) |
 | v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
 | v2.5 | Per-persona mute/unmute; per-speaker transcripts |
 | v3.0 | Dinner table mode: multi-lingual room, mute matrix, mixed pass-through |
@@ -308,7 +309,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 
 ### Product arc
 
-v1 is a two-person walkie-talkie interpreter. v2 adds group rooms, filters, and hands-free options. v3 targets a dinner-table interpretation layer where each person hears what they need and can mute what they don't.
+v1 is a two-person walkie-talkie interpreter. v2 standalone focuses on **trustworthy PTT + self-mute**; hands-free for **calls/meetings** is a separate integration track (see EXECUTION_PLAN). v3 targets a dinner-table interpretation layer where each person hears what they need and can mute what they don't.
 
 ```mermaid
 flowchart LR

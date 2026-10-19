@@ -58,11 +58,6 @@ type SessionScreenProps = {
   onStopRecording: () => void | Promise<void>;
   onEndSpeaking?: () => Promise<void>;
   onLeave: () => void;
-  selfMuted: boolean;
-  onSelfMutedChange: (muted: boolean) => void;
-  isHandsFreeMode?: boolean;
-  handsFreeListening?: boolean;
-  handsFreeCapturing?: boolean;
 };
 
 function statusColor(status: SessionScreenProps["status"]): string {
@@ -117,12 +112,8 @@ export function SessionScreen({
   onStopRecording,
   onEndSpeaking,
   onLeave,
-  selfMuted,
-  onSelfMutedChange,
-  isHandsFreeMode = false,
-  handsFreeListening = false,
-  handsFreeCapturing = false,
 }: SessionScreenProps) {
+  const [selfMuted, setSelfMuted] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
   const { width: windowWidth } = useWindowDimensions();
   const stackMicBanner = windowWidth < 520;
@@ -162,9 +153,6 @@ export function SessionScreen({
     isMyTurn,
     isOpenTurn,
     isSelfMuted: selfMuted,
-    conversationMode,
-    handsFreeCapturing,
-    handsFreeListening,
   });
 
   const turnColor = (() => {
@@ -208,45 +196,6 @@ export function SessionScreen({
   }, []);
 
   useEffect(() => {
-    if (handsFreeCapturing) {
-      const scaleLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(buttonScale, {
-            toValue: 1.04,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-          Animated.timing(buttonScale, {
-            toValue: 1,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      const glowLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(buttonGlow, {
-            toValue: 1,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-          Animated.timing(buttonGlow, {
-            toValue: 0.35,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      scaleLoop.start();
-      glowLoop.start();
-      return () => {
-        scaleLoop.stop();
-        glowLoop.stop();
-        buttonScale.setValue(1);
-        buttonGlow.setValue(0);
-      };
-    }
-
     if (isRecording) {
       const scaleLoop = Animated.loop(
         Animated.sequence([
@@ -332,7 +281,7 @@ export function SessionScreen({
 
     buttonScale.setValue(1);
     buttonGlow.setValue(0);
-  }, [buttonGlow, buttonScale, handsFreeCapturing, isProcessing, isRecording]);
+  }, [buttonGlow, buttonScale, isProcessing, isRecording]);
 
   useEffect(() => {
     if (!isRecording && !isProcessing) {
@@ -381,7 +330,7 @@ export function SessionScreen({
 
   const handleToggleSelfMute = useCallback(async () => {
     if (selfMuted) {
-      onSelfMutedChange(false);
+      setSelfMuted(false);
       return;
     }
 
@@ -398,8 +347,8 @@ export function SessionScreen({
       );
       return;
     }
-    onSelfMutedChange(true);
-  }, [onEndSpeaking, onSelfMutedChange, selfMuted, stopTalking]);
+    setSelfMuted(true);
+  }, [onEndSpeaking, selfMuted, stopTalking]);
 
   const handleTalkStart = async () => {
     if (selfMuted) {
@@ -455,51 +404,7 @@ export function SessionScreen({
 
   const showSessionStats = participants >= 2;
 
-  const handsFreeActive = isHandsFreeMode && !selfMuted;
-  const showHandsFreeIndicator = isHandsFreeMode;
-
-  const talkButton = showHandsFreeIndicator ? (
-    <Animated.View
-      style={[
-        styles.talkButtonWrap,
-        {
-          transform: [{ scale: handsFreeCapturing ? buttonScale : 1 }],
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.talkButton,
-          handsFreeCapturing && styles.talkButtonActive,
-          selfMuted && styles.talkButtonDisabled,
-          handsFreeActive && !handsFreeCapturing && styles.talkButtonHandsFreeIdle,
-        ]}
-        accessibilityRole="text"
-        accessibilityLabel={
-          selfMuted
-            ? "Hands-free paused while muted"
-            : handsFreeCapturing
-              ? "Speaking hands-free"
-              : handsFreeListening
-                ? "Listening hands-free"
-                : "Starting hands-free microphone"
-        }
-      >
-        {selfMuted ? (
-          <Text style={styles.talkButtonText}>Muted</Text>
-        ) : handsFreeCapturing ? (
-          <View style={styles.talkButtonContent}>
-            <Animated.View style={[styles.recordingDot, { opacity: buttonGlow }]} />
-            <Text style={styles.talkButtonText}>Speaking…</Text>
-          </View>
-        ) : (
-          <Text style={styles.talkButtonText}>
-            {handsFreeListening ? "Listening…" : "Starting mic…"}
-          </Text>
-        )}
-      </View>
-    </Animated.View>
-  ) : (
+  const talkButton = (
     <Animated.View
       style={[
         styles.talkButtonWrap,
@@ -1008,9 +913,6 @@ const styles = StyleSheet.create({
   },
   talkButtonDisabled: {
     opacity: 0.5,
-  },
-  talkButtonHandsFreeIdle: {
-    backgroundColor: "#0ea5e9",
   },
   talkButtonRing: {
     position: "absolute",

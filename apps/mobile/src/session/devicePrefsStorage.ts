@@ -40,11 +40,13 @@ export async function loadDevicePrefs(): Promise<DevicePrefs | null> {
   const speakerGender = VALID_GENDERS.has(genderRaw as SpeakerGender)
     ? (genderRaw as SpeakerGender)
     : "female";
-  const conversationMode = VALID_CONVERSATION_MODES.has(
+  const storedMode = VALID_CONVERSATION_MODES.has(
     conversationModeRaw as ConversationMode,
   )
     ? (conversationModeRaw as ConversationMode)
     : "push_to_talk";
+  const conversationMode =
+    storedMode === "hands_free" ? "push_to_talk" : storedMode;
 
   return { hearLang, speakerGender, conversationMode };
 }

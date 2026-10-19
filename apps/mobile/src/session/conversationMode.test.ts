@@ -7,12 +7,13 @@ import {
   isHandsFreeComingSoon,
 } from "./conversationMode.js";
 
-test("effectiveConversationMode passes through stored preference", () => {
+test("effectiveConversationMode always uses push-to-talk in session", () => {
   assert.equal(effectiveConversationMode("push_to_talk"), "push_to_talk");
-  assert.equal(effectiveConversationMode("hands_free"), "hands_free");
+  assert.equal(effectiveConversationMode("hands_free"), "push_to_talk");
 });
 
-test("hands-free is no longer treated as coming soon", () => {
-  assert.equal(isHandsFreeComingSoon("hands_free"), false);
-  assert.match(getSessionModeSubtitle("hands_free"), /Hands-free/i);
+test("hands-free preference shows coming soon in settings copy", () => {
+  assert.equal(isHandsFreeComingSoon("hands_free"), true);
+  assert.equal(isHandsFreeComingSoon("push_to_talk"), false);
+  assert.match(getSessionModeSubtitle("hands_free"), /coming soon/i);
 });

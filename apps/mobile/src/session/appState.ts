@@ -1,4 +1,4 @@
-import type { ConversationMode, LanguageCode, SpeakerGender } from "../config";
+import type { LanguageCode, SpeakerGender } from "../config";
 import { languageLabel, speakerGenderLabel } from "../config";
 
 export type VoiceProfileStatus = "custom" | "default";
@@ -45,7 +45,6 @@ export function buildJoinRoomPayload(input: {
   speakerGender: SpeakerGender;
   speakLangOverride?: LanguageCode;
   elevenlabsVoiceId?: string | null;
-  conversationMode?: ConversationMode;
 }) {
   const payload: {
     roomCode: string;
@@ -53,16 +52,11 @@ export function buildJoinRoomPayload(input: {
     speakerGender: SpeakerGender;
     speakLangOverride?: LanguageCode;
     elevenlabsVoiceId?: string;
-    conversationMode?: ConversationMode;
   } = {
     roomCode: input.roomCode,
     hearLang: input.myLang,
     speakerGender: input.speakerGender,
   };
-
-  if (input.conversationMode) {
-    payload.conversationMode = input.conversationMode;
-  }
 
   if (input.speakLangOverride) {
     payload.speakLangOverride = input.speakLangOverride;

@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
-import {
-  SERVER_URL,
-  type ConversationMode,
-  type LanguageCode,
-  type SpeakerGender,
-} from "../config";
+import { SERVER_URL, type LanguageCode, type SpeakerGender } from "../config";
 import {
   buildJoinRoomPayload,
   shouldApplyTurnState,
@@ -125,7 +120,6 @@ type UseSocketOptions = {
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
   elevenlabsVoiceId?: string | null;
-  conversationMode?: ConversationMode;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
@@ -135,7 +129,6 @@ export function useSocket({
   myLang,
   speakerGender,
   elevenlabsVoiceId = null,
-  conversationMode = "push_to_talk",
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
@@ -144,7 +137,6 @@ export function useSocket({
   const myLangRef = useRef(myLang);
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
-  const conversationModeRef = useRef(conversationMode);
   const connectedRef = useRef(false);
 
   const emitJoinRoom = useCallback(() => {
@@ -160,7 +152,6 @@ export function useSocket({
         myLang: myLangRef.current,
         speakerGender: speakerGenderRef.current,
         elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
-        conversationMode: conversationModeRef.current,
       }),
     );
   }, []);
@@ -337,10 +328,6 @@ export function useSocket({
   }, [elevenlabsVoiceId]);
 
   useEffect(() => {
-    conversationModeRef.current = conversationMode;
-  }, [conversationMode]);
-
-  useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
@@ -457,56 +444,6 @@ export function useSocket({
     });
   }, [applyTurnState]);
 
-  const emitSpeechPayload = useCallback(
-    (
-      eventName: "audio_chunk" | "utterance",
-      audioBase64: string,
-      format: string,
-      recordingDurationMs: number,
-      recordingStartedAt?: number,
-    ) => {
-      const socket = socketRef.current;
-      if (!socket?.connected) {
-        setErrorMessage("Not connected to server");
-        return;
-      }
-
-      const trimmed = audioBase64.trim();
-      if (!trimmed) {
-        setErrorMessage("Recording was empty. Try speaking a little longer.");
-        return;
-      }
-
-      const byteLength = Math.floor((trimmed.length * 3) / 4);
-      if (byteLength < MIN_RECORDING_BYTES) {
-        setErrorMessage("Recording too short. Try speaking a little longer.");
-        return;
-      }
-
-      if (!hasValidRecordingContainer(trimmed)) {
-        setErrorMessage(
-          "Could not read that recording. Try speaking a little longer.",
-        );
-        return;
-      }
-
-      pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
-      if (pendingSpeechMsRef.current < MIN_RECORDING_DURATION_MS) {
-        setErrorMessage("Recording too short. Try speaking a little longer.");
-        return;
-      }
-
-      setErrorMessage(null);
-      socket.emit(eventName, {
-        audioBase64: trimmed,
-        format,
-        recordingDurationMs: pendingSpeechMsRef.current,
-        recordingStartedAt,
-      });
-    },
-    [],
-  );
-
   const sendAudioChunk = useCallback(
     (
       audioBase64: string,
@@ -528,33 +465,42 @@ export function useSocket({
         return;
       }
 
-      emitSpeechPayload(
-        "audio_chunk",
-        audioBase64,
-        format,
-        recordingDurationMs,
-        recordingStartedAt,
-      );
-    },
-    [emitSpeechPayload],
-  );
+      const trimmed = audioBase64.trim();
+      if (!trimmed) {
+        setErrorMessage("Recording was empty. Hold the button a little longer.");
+        return;
+      }
 
-  const sendUtterance = useCallback(
-    (
-      audioBase64: string,
-      format: string,
-      recordingDurationMs: number,
-      recordingStartedAt?: number,
-    ) => {
-      emitSpeechPayload(
-        "utterance",
-        audioBase64,
+      const byteLength = Math.floor((trimmed.length * 3) / 4);
+      if (byteLength < MIN_RECORDING_BYTES) {
+        setErrorMessage("Recording too short. Hold the button a little longer.");
+        return;
+      }
+
+      if (!hasValidRecordingContainer(trimmed)) {
+        setErrorMessage(
+          "Could not read that recording. Hold the button a little longer and try again.",
+        );
+        return;
+      }
+
+      pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
+      if (pendingSpeechMsRef.current < MIN_RECORDING_DURATION_MS) {
+        setErrorMessage(
+          "Recording too short. Hold the button a little longer.",
+        );
+        return;
+      }
+
+      setErrorMessage(null);
+      socket.emit("audio_chunk", {
+        audioBase64: trimmed,
         format,
-        recordingDurationMs,
+        recordingDurationMs: pendingSpeechMsRef.current,
         recordingStartedAt,
-      );
+      });
     },
-    [emitSpeechPayload],
+    [],
   );
 
   useEffect(() => {
@@ -709,7 +655,7 @@ export function useSocket({
 
   useEffect(() => {
     emitJoinRoom();
-  }, [emitJoinRoom, conversationMode, elevenlabsVoiceId, myLang, speakerGender]);
+  }, [emitJoinRoom, elevenlabsVoiceId, myLang, speakerGender]);
 
   return {
     status,
@@ -733,7 +679,6 @@ export function useSocket({
     claimTurn,
     releaseTurn,
     sendAudioChunk,
-    sendUtterance,
     setErrorMessage,
   };
 };

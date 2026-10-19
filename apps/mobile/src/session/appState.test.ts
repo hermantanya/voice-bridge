@@ -67,7 +67,6 @@ test("buildJoinRoomPayload sends translate-to, gender, and optional voice id", (
       speakerGender: "female",
       speakLangOverride: "he",
       elevenlabsVoiceId: " voice-123 ",
-      conversationMode: "hands_free",
     }),
     {
       roomCode: "ABCD",
@@ -75,7 +74,6 @@ test("buildJoinRoomPayload sends translate-to, gender, and optional voice id", (
       speakLangOverride: "he",
       speakerGender: "female",
       elevenlabsVoiceId: "voice-123",
-      conversationMode: "hands_free",
     },
   );
 });

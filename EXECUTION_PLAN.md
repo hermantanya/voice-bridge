@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **v2.0 phase 2** — server `utterance` routing; **v2.0 phase 3** — client VAD → `utterance` when hands-free + live; **v2.0 phase 4** — Settings mode toggle dogfood; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **external beta** optional when domain ready)
 
 ---
 
@@ -108,44 +108,47 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ---
 
-## v2.0 — Hands-free conversation (**planned; 2-person first**)
+## v2.0 — Standalone app: PTT + self-mute (**shipped for 2-person**)
 
-**Goal:** Conversations feel natural — speak without holding a button — while keeping a trustworthy **self-mute** and an optional **push-to-talk** mode in Settings.
+**Product decision (October 2026):** The **standalone Voice Bridge app** stays **push-to-talk only**. Hands-free VAD in the client is **out of scope** — removed after phase 3 spike; Settings **Hands-free** stays visible as **coming soon** (no live VAD). We **double down** on PTT reliability (iOS PCM WAV uploads, self-mute, turn handling).
 
-**Overlap decision (locked): Option A — per-participant utterances**
+**Self-mute (PTT):** When **muted**, hold-to-talk is disabled, no uplink, clear **Live / Muted** banner + accessibility. Unmute restores hold-to-talk.
 
-| Mode | Floor / routing | Overlap |
+**Server (kept, dormant for standalone):** `utterance` routing and `conversationMode: "hands_free"` on `join_room` remain on the server for **future call/meeting integrations**; standalone clients always join as **push_to_talk** and only send `audio_chunk`.
+
+| Item | Standalone app | Server |
 |---|---|---|
-| **Hands-free** | Each **live** device runs VAD → bounded **utterances** → server processes **per speaker** | Both can talk; **no** global “not your turn”; listener **queues playback** if two translations arrive close together |
-| **Push-to-talk** (Settings) | Keep v1 **claim_turn / release_turn** single floor | Same as today — explicit control |
+| Push-to-talk + turn lock | ✅ Shipped | ✅ |
+| Session self-mute | ✅ Shipped | — |
+| iOS WAV / upload fixes | ✅ Shipped | ✅ validation |
+| Client VAD → `utterance` | ❌ Removed / deferred | ✅ Ready when integrated |
+| Settings hands-free toggle (live) | ❌ Cancelled | — |
 
-**Self-mute (both modes):** When **muted**, mic and VAD off, no uplink, clear persistent indicator (**Live** vs **Muted**, strong VoiceOver labels). Unmute returns to the chosen conversation mode.
+### Shipped phases (standalone)
 
-**Not in v2.0 scope:** 3+ participants (v2.1), muting *other* people (v2.5), pass-through language profiles (can follow in v2.0.x or v2.1 — see README roadmap).
+1. [x] **Self-mute + indicator** on PTT session
+2. [x] **iOS recording reliability** (PCM WAV path, truncated upload guards)
+3. [x] **Server utterance routing** (Option A) + integration tests — unused by standalone client
 
-### Server
+### Cancelled / deferred (standalone app)
 
-- [x] Session flag from client: `conversationMode: "hands_free" | "push_to_talk"` on `join_room` (defaults to push-to-talk)
-- [x] **Hands-free path:** `utterance` event accepts payloads **without** shared turn lock; run STT → translate → TTS **per utterance / per speaker**; parallel pipelines do not block PTT floor state
-- [ ] **PTT path:** unchanged turn gating on `audio_chunk`
-- [ ] Rate limits and billable ms still **per participant** (existing room usage model)
-- [x] Integration tests: overlapping utterances from two clients both deliver translations (mock pipeline)
+- [~] **Client VAD** (was v2 phase 3) — **reverted**; not shipping in standalone app
+- [~] **Live hands-free Settings mode** (was v2 phase 4) — **deferred**; UI shows coming soon only
 
-### Mobile / web
+---
 
-- [x] Settings: **Conversation mode** — Push-to-talk vs Hands-free (device-local via AsyncStorage)
-- [x] Session UI: **Mute / Unmute self** + always-visible status (color + text + accessibility)
-- [x] Hands-free: VAD → utterance boundaries → send; playback **queue** on incoming translations
-- [x] Push-to-talk: keep current hold button; mute disables hold/VAD
-- [x] Copy and turn labels differ by mode (no “hold to talk” when hands-free is live)
+## Future: call integration add-on (Zoom / WhatsApp / video calls)
 
-### Phased delivery
+**Not parallel to the standalone HF app.** Hands-free utterance routing is intended for a **separate integration** that taps **system/call audio** (Zoom, WhatsApp, FaceTime, etc.) — not the in-app mic VAD path we rolled back.
 
-1. [x] **Self-mute + indicator** on current PTT session (push-to-talk only; mute stops an active hold without sending short/empty audio, releases the floor only if you held the speaking turn; unmute restores hold-to-talk)
-2. [x] **Server utterance routing** (Option A) behind mode flag — clients still default to PTT until phase 3–4
-3. [x] **Client VAD** wired to utterance send when hands-free + live
-4. [x] **Settings mode toggle** + dogfood on phone + web
-5. [ ] Bump **v2.0.0** when hands-free + mute + PTT fallback ship
+**Rough roadmap (when prioritized):**
+
+- [ ] Capture/transcript hook for **call audio** (platform-specific — share extension, virtual audio device, or partner SDK)
+- [ ] Bridge utterances into existing server **`utterance`** pipeline (per-speaker, overlap OK)
+- [ ] Playback routing back into the call or earbuds (product TBD)
+- [ ] Optional companion UI (mute matrix, “translate this call” toggle)
+
+Standalone app remains the **dogfood PTT interpreter**; call add-on is a **follow-on SKU / integration**, documented separately when scoped.
 
 ---
 

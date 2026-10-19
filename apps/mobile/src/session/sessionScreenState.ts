@@ -1,12 +1,13 @@
 import type { ConversationMode } from "../config";
 
-import { isHandsFreeMode } from "./conversationMode";
+import { isHandsFreeComingSoon } from "./conversationMode";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 export type TurnPhase = "waiting" | "speaking" | "processing";
 
+/** Phase 1: unmuted = allowed to use hold-to-talk (not hands-free yet). */
 export function getSelfMicLabel(isSelfMuted: boolean): string {
-  return isSelfMuted ? "Muted" : "Live";
+  return isSelfMuted ? "Mic off" : "Mic on";
 }
 
 export function getSelfMicHint(
@@ -14,13 +15,10 @@ export function getSelfMicHint(
   conversationMode: ConversationMode = "push_to_talk",
 ): string {
   if (isSelfMuted) {
-    if (isHandsFreeMode(conversationMode)) {
-      return "Muted — tap Unmute to listen again.";
-    }
     return "Muted — tap Unmute, then hold to talk.";
   }
-  if (isHandsFreeMode(conversationMode)) {
-    return "Hands-free — speak naturally; we detect when you pause.";
+  if (isHandsFreeComingSoon(conversationMode)) {
+    return "Hands-free is coming soon — hold the button while you speak.";
   }
   return "Push-to-talk — hold the button while you speak.";
 }
@@ -31,24 +29,12 @@ export function getTurnLabel(input: {
   isMyTurn: boolean;
   isOpenTurn: boolean;
   isSelfMuted?: boolean;
-  conversationMode?: ConversationMode;
-  handsFreeCapturing?: boolean;
-  handsFreeListening?: boolean;
 }): string {
   if (input.participants < 2) {
     return "Waiting for partner";
   }
   if (input.isSelfMuted) {
     return "Mic off";
-  }
-  if (isHandsFreeMode(input.conversationMode ?? "push_to_talk")) {
-    if (input.handsFreeCapturing) {
-      return "You're speaking";
-    }
-    if (input.handsFreeListening) {
-      return "Listening…";
-    }
-    return "Starting mic…";
   }
   if (input.isProcessing) {
     return "Translating...";
@@ -70,11 +56,7 @@ export function canStartTalking(input: {
   isOpenTurn: boolean;
   isMyTurn: boolean;
   isSelfMuted?: boolean;
-  conversationMode?: ConversationMode;
 }): boolean {
-  if (isHandsFreeMode(input.conversationMode ?? "push_to_talk")) {
-    return false;
-  }
   return (
     input.status === "connected" &&
     input.participants > 1 &&

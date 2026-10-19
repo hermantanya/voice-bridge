@@ -27,7 +27,7 @@ export const CONVERSATION_MODES: {
   {
     value: "hands_free",
     label: "Hands-free",
-    description: "Speak naturally; Voice Bridge detects pauses and sends utterances.",
+    description: "Coming soon — for calls and meetings, not the standalone app yet.",
   },
 ];
 
