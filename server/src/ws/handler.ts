@@ -29,6 +29,7 @@ import {
   removeParticipant,
 } from "./roomParticipants.js";
 import { isStreamingPttAllowedForClient } from "../streaming/streamingPttConfig.js";
+import { streamingPttDebugLog } from "../streaming/streamingPttDebug.js";
 import {
   getDefaultRealtimeSessionFactory,
   type RealtimeTranscriptionSessionFactory,
@@ -506,6 +507,10 @@ export function registerSocketHandlers(
       }
       if (isStreamingPttAllowedForClient(streamingPtt === true)) {
         socket.data.streamingPtt = true;
+        streamingPttDebugLog("join_room streaming PTT enabled", {
+          socketId: socket.id,
+          roomCode: code,
+        });
       } else {
         delete socket.data.streamingPtt;
       }
@@ -820,10 +825,19 @@ export function registerSocketHandlers(
 
       try {
         await startStreamingTurn(session, activeTurn);
+        streamingPttDebugLog("streaming_ptt_start ok", {
+          socketId: socket.id,
+          turnId,
+          roomCode: code,
+        });
         callback?.({ ok: true, turnId });
       } catch (error) {
         activeStreamingTurns.delete(socket.id);
         session.close();
+        streamingPttDebugLog("streaming_ptt_start failed", {
+          socketId: socket.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
         callback?.({
           ok: false,
           message:
@@ -855,6 +869,10 @@ export function registerSocketHandlers(
       if (format === "pcm16") {
         if (!turn.sessionReady) {
           turn.pendingPcmChunks.push(payload.audioBase64);
+          streamingPttDebugLog("streaming_audio_chunk queued (session not ready)", {
+            socketId: socket.id,
+            pending: turn.pendingPcmChunks.length,
+          });
         } else {
           turn.session.appendPcm16Base64(payload.audioBase64);
         }

@@ -8,6 +8,7 @@ import {
   shouldClearPartnerLang,
   type TurnState,
 } from "../session/appState";
+import { streamingPttDebugLog } from "../session/streamingPtt";
 import {
   hasValidRecordingContainer,
   MIN_RECORDING_DURATION_MS,
@@ -186,6 +187,8 @@ export function useSocket({
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
   const playTranslatedVoiceRef = useRef(playTranslatedVoice);
   const streamingPttRef = useRef(streamingPtt);
+  const streamingSessionActiveRef = useRef(false);
+  const streamingChunkCountRef = useRef(0);
   const transcriptTurnKeysRef = useRef(new Set<string>());
   const connectedRef = useRef(false);
 
@@ -432,6 +435,8 @@ export function useSocket({
     setPartnerLang(null);
     setTranscript([]);
     setPartnerPartial(null);
+    streamingSessionActiveRef.current = false;
+    streamingChunkCountRef.current = 0;
     transcriptTurnKeysRef.current.clear();
     setTotalActiveConversationMs(0);
     setMyBillableMs(0);
@@ -574,18 +579,28 @@ export function useSocket({
     return new Promise((resolve) => {
       const socket = socketRef.current;
       if (!socket?.connected || !streamingPttRef.current) {
+        streamingPttDebugLog("start skipped (not connected or flag off)");
         resolve(false);
         return;
       }
+
+      streamingSessionActiveRef.current = false;
+      streamingChunkCountRef.current = 0;
+      streamingPttDebugLog("streaming_ptt_start emit");
 
       socket.emit(
         "streaming_ptt_start",
         {},
         (response?: { ok?: boolean; message?: string }) => {
           if (response?.ok) {
+            streamingSessionActiveRef.current = true;
+            streamingPttDebugLog("streaming_ptt_start ok");
             resolve(true);
             return;
           }
+          streamingPttDebugLog("streaming_ptt_start failed", {
+            message: response?.message,
+          });
           if (response?.message) {
             setErrorMessage(response.message);
           }
@@ -600,6 +615,17 @@ export function useSocket({
       const socket = socketRef.current;
       if (!socket?.connected || !streamingPttRef.current) {
         return;
+      }
+
+      streamingChunkCountRef.current += 1;
+      if (
+        streamingChunkCountRef.current === 1 ||
+        streamingChunkCountRef.current % 20 === 0
+      ) {
+        streamingPttDebugLog("streaming_audio_chunk", {
+          n: streamingChunkCountRef.current,
+          sessionActive: streamingSessionActiveRef.current,
+        });
       }
 
       socket.emit("streaming_audio_chunk", {
@@ -629,6 +655,26 @@ export function useSocket({
           Math.round(recordingDurationMs),
         );
 
+        if (!streamingSessionActiveRef.current) {
+          streamingPttDebugLog("stop batch fallback (no streaming session)", {
+            chunks: streamingChunkCountRef.current,
+          });
+          sendAudioChunk(
+            audioBase64,
+            format,
+            pendingSpeechMsRef.current,
+            recordingStartedAt,
+          );
+          resolve(true);
+          return;
+        }
+
+        streamingPttDebugLog("streaming_ptt_stop emit", {
+          chunks: streamingChunkCountRef.current,
+          durationMs: pendingSpeechMsRef.current,
+        });
+        streamingSessionActiveRef.current = false;
+
         socket.emit(
           "streaming_ptt_stop",
           {
@@ -639,19 +685,28 @@ export function useSocket({
           },
           (response?: { ok?: boolean; message?: string }) => {
             if (response?.ok) {
-              setPartnerPartial(null);
+              streamingPttDebugLog("streaming_ptt_stop ok");
               resolve(true);
               return;
             }
+            streamingPttDebugLog("streaming_ptt_stop failed, batch fallback", {
+              message: response?.message,
+            });
+            sendAudioChunk(
+              audioBase64,
+              format,
+              pendingSpeechMsRef.current,
+              recordingStartedAt,
+            );
             if (response?.message) {
               setErrorMessage(response.message);
             }
-            resolve(false);
+            resolve(true);
           },
         );
       });
     },
-    [],
+    [sendAudioChunk],
   );
 
   useEffect(() => {
@@ -759,6 +814,9 @@ export function useSocket({
       if (payload.fromParticipantId === participantIdRef.current) {
         return;
       }
+      streamingPttDebugLog("partial_transcript received", {
+        chars: payload.sourceText?.length ?? 0,
+      });
       setPartnerPartial((current) => ({
         sourceText: payload.sourceText ?? current?.sourceText ?? "",
         translatedText: current?.translatedText ?? "",
@@ -766,6 +824,9 @@ export function useSocket({
     });
 
     socket.on("partial_translation", (payload: PartialTranslationPayload) => {
+      streamingPttDebugLog("partial_translation received", {
+        chars: payload.translatedText?.length ?? 0,
+      });
       applyPartnerPartial(payload);
     });
 

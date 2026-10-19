@@ -27,6 +27,7 @@ import {
   saveMicDeviceId,
   type MicrophoneDevice,
 } from "../web/microphoneDevices";
+import { streamingPttDebugLog } from "../session/streamingPtt";
 import {
   startStreamingPcmCapture,
   type StreamingPcmCapture,
@@ -455,6 +456,9 @@ export function useAudio({
             try {
               await onStreamingRecordingStartedRef.current?.();
             } catch (error) {
+              streamingPttDebugLog("streaming session start failed during hold", {
+                message: error instanceof Error ? error.message : String(error),
+              });
               console.warn("Streaming PTT session start failed:", error);
             }
             if (

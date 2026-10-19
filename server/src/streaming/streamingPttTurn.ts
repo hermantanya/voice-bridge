@@ -5,6 +5,7 @@ import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import { shouldTranslatePartial } from "./partialTranslationThrottle.js";
 import { createPartialTranslationScheduler } from "./partialTranslationScheduler.js";
 import type { RealtimeTranscriptionSession } from "./realtimeTranscriptionSession.js";
+import { streamingPttDebugLog } from "./streamingPttDebug.js";
 import { synthesize } from "../pipeline/tts.js";
 
 export type StreamingPttTurnContext = {
@@ -75,6 +76,10 @@ export function emitPartialTranscript(
     ...payload,
     role: "speaker" as const,
   });
+  streamingPttDebugLog("emit partial_transcript", {
+    turnId: ctx.turnId,
+    chars: sourceText.length,
+  });
 }
 
 export function emitPartialTranslation(
@@ -97,6 +102,11 @@ export function emitPartialTranslation(
   ctx.socket.emit("partial_translation", {
     ...payload,
     role: "speaker" as const,
+  });
+  streamingPttDebugLog("emit partial_translation", {
+    turnId: ctx.turnId,
+    targetLang,
+    chars: translatedText.length,
   });
 }
 
@@ -317,6 +327,10 @@ export async function finalizeStreamingTurn(
   const speechMs = Math.max(0, Math.round(ctx.speechMs));
 
   if (!finalSourceText && fallback.audioBase64) {
+    streamingPttDebugLog("finalize batch fallback (empty streaming transcript)", {
+      turnId: ctx.turnId,
+      streamingFailed: turn.streamingFailed,
+    });
     await runBatchFallback(ctx, fallback, speechMs);
     return;
   }
