@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (v1.4 **phase 2 in progress** — voice sync; phase 1 shipped; v1.3 shipped)
+**Last updated:** October 2026 (**v1.4 shipped** — profiles + cross-device voice sync; pre-beta polish next)
 
 ---
 
@@ -24,7 +24,8 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.1** — + RU, transcripts, speaking-time stats, web mic picker | ✅ Shipped |
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
 | **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
-| **v1.4** — Signed-in profiles; voice sync; App Store / PWA | 🚧 In progress (**phase 2:** voice sync — **now**) |
+| **v1.4** — Signed-in profiles; voice sync; welcome/guest entry | ✅ Shipped |
+| **v1.5** — Pre-beta polish; Expo beta; App Store / PWA | 📋 Next |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -50,7 +51,7 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 ---
 
-## v1.4 phase 2 — Voice sync across devices (**now**)
+## v1.4 phase 2 — Voice sync across devices (shipped)
 
 **Goal:** After sign-in, **`elevenlabsVoiceId`** lives on the server profile and follows the user to every device (enroll once, join from phone or web with the same cloned voice).
 
@@ -69,8 +70,8 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 **Deploy + verify:**
 
-- [ ] E2E: enroll on web, sign in on phone → same voice in session without re-enrolling
-- [ ] Bump to **v1.4.0** and update README / health version when phase 2 ships
+- [x] E2E: enroll on web, sign in on phone → same voice in session without re-enrolling
+- [x] Bump to **v1.4.0** and update README / health version when phase 2 ships
 
 ---
 
@@ -227,7 +228,7 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 
 | Version | Focus |
 |---|---|
-| **v1.4** | Phase 1 ✅ profiles. Phase 2 🚧 voice sync. Then pre-beta polish → Expo/EAS beta → App Store / PWA later |
+| **v1.4** | ✅ Shipped — profiles + voice sync + guest/welcome. **v1.5:** pre-beta polish → Expo/EAS beta → App Store / PWA later |
 | **v2.0** | Hands-free (VAD); pass-through languages; saved language prefs |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 
@@ -269,7 +270,7 @@ Settings → Play voice preview
 
 - Two participants only (unchanged)
 - Real voice requires enrollment; unenrolled users fall back to preset voice
-- Voice profile is **per device** until v1.4
+- Voice profile is **per device** for guests; signed-in users sync via server profile
 - ~3–6s latency may increase slightly with ElevenLabs TTS
 - All clones live under **our** ElevenLabs account (Starter slot cap)
 - Same-language turns are transcript-only (no audio to listener)

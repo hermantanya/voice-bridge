@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -76,6 +76,16 @@ export function SettingsScreen({
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
     selectedMicrophoneId,
   );
+  const syncedProfileRef = useRef({ myLang, speakerGender });
+
+  useEffect(() => {
+    const prev = syncedProfileRef.current;
+    setDraftLang((draft) => (draft === prev.myLang ? myLang : draft));
+    setDraftGender((draft) =>
+      draft === prev.speakerGender ? speakerGender : draft,
+    );
+    syncedProfileRef.current = { myLang, speakerGender };
+  }, [myLang, speakerGender]);
 
   useEffect(() => {
     setPreviewText(null);

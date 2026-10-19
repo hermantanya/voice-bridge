@@ -2,7 +2,9 @@
 
 Real-time voice translation between two devices. Hold a button, speak in your language, and your partner hears the translation in yours.
 
-**v1.3 (current):** English, Hebrew, and Russian. **Auto-detect** what you speak; you only set **Translate to** (the language you want to hear). Push-to-talk, first-come-first-serve turns, phone + browser, live transcripts, per-person speaking time, **gender-aware translation**, **cloned-voice TTS** (ElevenLabs), and **Settings voice preview** for enrolled voices.
+**v1.4 (current):** Everything in v1.3 plus **email sign-in**, **guest mode**, and **cloud profile sync** — Translate to, gender, and enrolled **cloned voice** follow your account across phone and web. Dev OTP codes on Railway until Resend is enabled for external beta.
+
+**v1.3:** Auto-detect spoken language; **Translate to** UX; Settings voice preview.
 
 **v1.2:** Cloned-voice TTS and Settings enrollment (~30s minimum).
 
@@ -47,7 +49,7 @@ In **Language settings** → **Set up my voice**:
 
 Already enrolled? Use **Play voice preview** in Settings to hear your voice again without re-recording.
 
-When **signed in**, your enrolled voice syncs across devices (v1.4 phase 2). **Guests** keep voice enrollment on this device only. Re-enroll or remove from Settings anytime.
+When **signed in**, Translate to, gender, and your enrolled voice sync across devices. **Guests** keep settings and voice on this device only. Re-enroll or remove from Settings anytime.
 
 ### 2. Start a session
 
@@ -95,7 +97,7 @@ While you hold the button or translation is running, the button animates and spe
 
 ## Architecture
 
-**v1.3 (current):** OpenAI Whisper **auto-detects** spoken language; GPT-4o-mini translates when source ≠ listener's Translate-to; **ElevenLabs IVC** for cloned-voice TTS when enrolled; OpenAI preset `nova` as fallback. Same-language turns skip TTS (transcript only).
+**v1.4 (current):** Same pipeline as v1.3; signed-in users load **hearLang**, **speakerGender**, and **elevenlabsVoiceId** from Postgres via JWT profile APIs before joining rooms.
 
 **Provider history:** OpenAI Custom Voices was spiked and blocked (404). Fish Audio was spiked as an alternative; **ElevenLabs** was chosen for v1.2 production. See [EXECUTION_PLAN.md](EXECUTION_PLAN.md).
 
@@ -245,7 +247,7 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 
 **Optional later:** user auth, per-room tokens, or requiring everyone to self-host their own Railway backend.
 
-## Known limitations (v1.3)
+## Known limitations (v1.4)
 
 - Two participants per room only
 - English, Hebrew, and Russian only (auto-detected; any pair: EN ↔ HE ↔ RU)
@@ -254,8 +256,10 @@ Set these in Railway Variables. For personal use, defaults are plenty. Tighten i
 - Web push-to-talk requires Chrome; mic active only while holding button
 - Translate-to and gender settings apply on room join; rejoin after changes
 - Speaking time counts update after each turn completes, not live during hold
-- Real voice requires one-time enrollment per device; unenrolled users use preset TTS
-- Voice profile is device-local until v1.4 (no cross-device sync yet)
+- Real voice requires one-time enrollment; unenrolled users use preset TTS
+- **Guests:** voice and language prefs stay on this device only; sign in to sync
+- Signed-in Settings refresh on other devices polls every few seconds (not instant push)
+- OTP email uses dev on-screen codes until Resend is configured for external beta
 - Cloned voices live under the server's ElevenLabs account (Starter slot cap)
 - Same-language turns deliver transcript only (no audio playback to listener)
 
@@ -271,7 +275,8 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 | **v1.1** (done) | + Russian (EN ↔ HE ↔ RU); scrollable transcript; session + speaking time stats; web mic picker; merged room usage on server (for future billing) |
 | **v1.2** (done) | Real voice on translated speech (ElevenLabs IVC); Settings enrollment (~30s minimum); gender-aware Hebrew/Russian translation; device-local `voice_id`; preset fallback |
 | **v1.3** (done) | Auto-detect spoken language; **Translate to** UX; same-language transcript-only skip; Settings voice preview; join waits for voice profile load |
-| v1.4 | **Phase 1 (done):** sign-in + cloud profile. **Phase 2 (now):** sync cloned voice. **Then:** pre-beta polish (Resend, CI, dogfood) → small Expo beta → App Store / PWA later |
+| **v1.4** (done) | Email OTP sign-in; guest mode; Postgres profiles; sync Translate to + gender + cloned voice; welcome/auth entry; Settings draft save |
+| v1.5 | Pre-beta polish (Resend, CI) → small Expo beta → App Store / PWA later |
 
 ### Group and table (v2–v3)
 

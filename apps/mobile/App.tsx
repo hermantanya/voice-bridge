@@ -158,9 +158,16 @@ export default function App() {
   }, [auth.refreshSession, auth.signedIn]);
 
   useEffect(() => {
-    if (screen === "settings" && auth.signedIn) {
-      void auth.refreshSession();
+    if (screen !== "settings" || !auth.signedIn) {
+      return;
     }
+
+    void auth.refreshSession();
+    const interval = setInterval(() => {
+      void auth.refreshSession();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [auth.refreshSession, auth.signedIn, screen]);
 
   const handleVoiceEnrolled = useCallback(
