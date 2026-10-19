@@ -300,7 +300,7 @@ Near-term engineering steps: **[EXECUTION_PLAN.md](EXECUTION_PLAN.md)**.
 
 | Version | Features |
 |---|---|
-| v2.0 | Optional hands-free (VAD); pass-through languages (transcribe, no TTS); saved language prefs |
+| v2.0 | Hands-free (VAD) + **self-mute** (clear Live/Muted); **per-speaker utterances** when hands-free (overlap OK); Settings **push-to-talk vs hands-free**; pass-through languages later |
 | v2.1 | 3–6 participants; device = persona (no shared-mic diarization yet) |
 | v2.5 | Per-persona mute/unmute; per-speaker transcripts |
 | v3.0 | Dinner table mode: multi-lingual room, mute matrix, mixed pass-through |

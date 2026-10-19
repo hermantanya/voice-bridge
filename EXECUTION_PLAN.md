@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; **v1.5 internal polish done** — dogfood passed; **external beta** when you want outsiders + a domain)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 planned** — hands-free Option A + self-mute; **external beta** optional when domain ready)
 
 ---
 
@@ -105,6 +105,47 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 - [ ] **Expo Go + EAS** share link for a small tester group (no App Store / $99 yet)
 - [ ] **Short tester doc:** sign-in, enroll once, join room from two phones
 - [ ] **Later:** App Store / PWA packaging if we outgrow Expo Go
+
+---
+
+## v2.0 — Hands-free conversation (**planned; 2-person first**)
+
+**Goal:** Conversations feel natural — speak without holding a button — while keeping a trustworthy **self-mute** and an optional **push-to-talk** mode in Settings.
+
+**Overlap decision (locked): Option A — per-participant utterances**
+
+| Mode | Floor / routing | Overlap |
+|---|---|---|
+| **Hands-free** | Each **live** device runs VAD → bounded **utterances** → server processes **per speaker** | Both can talk; **no** global “not your turn”; listener **queues playback** if two translations arrive close together |
+| **Push-to-talk** (Settings) | Keep v1 **claim_turn / release_turn** single floor | Same as today — explicit control |
+
+**Self-mute (both modes):** When **muted**, mic and VAD off, no uplink, clear persistent indicator (**Live** vs **Muted**, strong VoiceOver labels). Unmute returns to the chosen conversation mode.
+
+**Not in v2.0 scope:** 3+ participants (v2.1), muting *other* people (v2.5), pass-through language profiles (can follow in v2.0.x or v2.1 — see README roadmap).
+
+### Server
+
+- [ ] Session flag from client: `conversationMode: "hands_free" | "push_to_talk"` (on join or dedicated event)
+- [ ] **Hands-free path:** accept utterance payloads **without** shared turn lock; run STT → translate → TTS **per utterance / per speaker**; allow parallel pipelines in one room
+- [ ] **PTT path:** unchanged turn gating on `audio_chunk`
+- [ ] Rate limits and billable ms still **per participant** (existing room usage model)
+- [ ] Integration tests: overlapping utterances from two clients both deliver translations
+
+### Mobile / web
+
+- [ ] Settings: **Conversation mode** — Push-to-talk vs Hands-free (persist device-local or profile — TBD)
+- [ ] Session UI: **Mute / Unmute self** + always-visible status (color + text + accessibility)
+- [ ] Hands-free: VAD → utterance boundaries → send; playback **queue** on incoming translations
+- [ ] Push-to-talk: keep current hold button; mute disables hold/VAD
+- [ ] Copy and turn labels differ by mode (no “hold to talk” when hands-free is live)
+
+### Phased delivery
+
+1. [ ] **Self-mute + indicator** on current PTT session (validate UX and a11y)
+2. [ ] **Server utterance routing** (Option A) behind mode flag
+3. [ ] **Client VAD** wired to utterance send when hands-free + live
+4. [ ] **Settings mode toggle** + dogfood on phone + web
+5. [ ] Bump **v2.0.0** when hands-free + mute + PTT fallback ship
 
 ---
 
@@ -243,7 +284,7 @@ Settings → Set up my voice → record script (30s min, ~45–60s target)
 | Version | Focus |
 |---|---|
 | **v1.4** | ✅ Shipped — profiles + voice sync + guest/welcome. **v1.5:** internal dogfood + CI. **External beta:** domain + Resend + EAS when ready |
-| **v2.0** | Hands-free (VAD); pass-through languages; saved language prefs |
+| **v2.0** | Hands-free (VAD) + **self-mute**; **Option A** utterance routing; Settings **PTT vs hands-free**; pass-through languages later |
 | **v2.1+** | Group rooms, mute matrix, dinner-table mode — see [VISION.md](VISION.md) |
 
 ---
