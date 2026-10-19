@@ -1,6 +1,5 @@
 import {
   AudioModule,
-  RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   type AudioPlayer,
@@ -12,6 +11,7 @@ import {
   isDeliverableRecording,
   resolveNativeUploadFormat,
 } from "../session/nativeRecordingFormat";
+import { pushToTalkRecordingOptions } from "../session/pushToTalkRecordingOptions";
 import {
   nativeRecordingDurationMs,
   readNativeRecordingAsBase64,
@@ -450,7 +450,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       return;
     }
 
-    const recording = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+    const recording = new AudioModule.AudioRecorder(pushToTalkRecordingOptions());
     await recording.prepareToRecordAsync();
 
     if (nativeStopRequestedRef.current) {
@@ -553,6 +553,9 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     try {
       await recording.stop();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 60);
+      });
 
       const startedAt = recordingStartedAtRef.current;
       const wallClockMs = startedAt

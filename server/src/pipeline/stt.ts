@@ -2,6 +2,7 @@ import { File } from "node:buffer";
 
 import { getOpenAIClient } from "./openai.js";
 import {
+  hasWhisperReadyPayload,
   mimeTypeForAudioFormat,
   resolveWhisperUploadFormat,
 } from "./audioFormat.js";
@@ -32,11 +33,30 @@ export async function transcribe(
   languageOverride?: string,
 ): Promise<TranscriptionResult> {
   const openai = getOpenAIClient();
+  if (!hasWhisperReadyPayload(audio)) {
+    throw new Error(
+      "Could not read that recording. Hold the button a little longer and try again.",
+    );
+  }
+
   const normalizedFormat = resolveWhisperUploadFormat(audio, format);
+  if (normalizedFormat === "caf") {
+    throw new Error(
+      "Could not read that recording. Hold the button a little longer and try again.",
+    );
+  }
+
   const mimeType = mimeTypeForAudioFormat(normalizedFormat);
   const file = new File([audio], `audio.${normalizedFormat}`, {
     type: mimeType,
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    const magic = audio.subarray(0, 12).toString("hex");
+    console.info(
+      `[stt] whisper upload format=${normalizedFormat} bytes=${audio.length} magic=${magic}`,
+    );
+  }
 
   try {
     if (languageOverride) {

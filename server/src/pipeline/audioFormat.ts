@@ -2,6 +2,8 @@
 export const MIN_AUDIO_BYTES = 1600;
 /** Keep aligned with apps/mobile/src/session/nativeRecordingFormat.ts */
 export const MIN_RECORDING_DURATION_MS = 200;
+/** Minimum bytes inside wav `data` or m4a `mdat` (not just container headers). */
+export const MIN_ENCODED_AUDIO_BYTES = 512;
 
 const WHISPER_FORMATS = new Set([
   "webm",
@@ -14,7 +16,6 @@ const WHISPER_FORMATS = new Set([
   "oga",
   "ogg",
   "flac",
-  "caf",
 ]);
 
 /**
@@ -22,9 +23,6 @@ const WHISPER_FORMATS = new Set([
  */
 export function normalizeAudioFormat(format: string | undefined): string {
   const raw = (format ?? "webm").trim().toLowerCase().replace(/^\./, "");
-  if (raw === "caf" || raw === "x-caf") {
-    return "caf";
-  }
   if (raw === "3gp" || raw === "3gpp") {
     return "3gp";
   }
@@ -54,11 +52,70 @@ export function mimeTypeForAudioFormat(format: string): string {
       return "audio/ogg";
     case "flac":
       return "audio/flac";
-    case "caf":
-      return "audio/x-caf";
     default:
       return "audio/webm";
   }
+}
+
+function wavPcmDataBytes(audio: Buffer): number {
+  if (
+    audio.subarray(0, 4).toString("ascii") !== "RIFF" ||
+    audio.subarray(8, 12).toString("ascii") !== "WAVE"
+  ) {
+    return 0;
+  }
+
+  let offset = 12;
+  while (offset + 8 <= audio.length) {
+    const chunkId = audio.subarray(offset, offset + 4).toString("ascii");
+    const chunkSize = audio.readUInt32LE(offset + 4);
+    if (chunkId === "data") {
+      return Math.max(0, Math.min(chunkSize, audio.length - offset - 8));
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+
+  return 0;
+}
+
+function isobmffMdatPayloadBytes(audio: Buffer): number {
+  let offset = 0;
+  while (offset + 8 <= audio.length) {
+    const boxSize = audio.readUInt32BE(offset);
+    const boxType = audio.subarray(offset + 4, offset + 8).toString("ascii");
+    if (boxSize < 8) {
+      break;
+    }
+
+    if (boxType === "mdat") {
+      if (boxSize === 0) {
+        return Math.max(0, audio.length - offset - 8);
+      }
+      return Math.max(0, boxSize - 8);
+    }
+
+    offset += boxSize;
+  }
+
+  return 0;
+}
+
+/** OpenAI Whisper does not accept CAF; m4a must contain encoded audio in mdat. */
+export function hasWhisperReadyPayload(audio: Buffer): boolean {
+  const format = detectAudioFormatFromBuffer(audio);
+  if (!format || format === "caf") {
+    return false;
+  }
+
+  if (format === "wav") {
+    return wavPcmDataBytes(audio) >= MIN_ENCODED_AUDIO_BYTES;
+  }
+
+  if (format === "m4a" || format === "mp4") {
+    return isobmffMdatPayloadBytes(audio) >= MIN_ENCODED_AUDIO_BYTES;
+  }
+
+  return true;
 }
 
 /** Prefer container magic over client extension (iOS often mislabels CAF as m4a). */
@@ -116,9 +173,8 @@ export function resolveWhisperUploadFormat(
     return fromClient;
   }
 
-  // CAF bytes labeled m4a/mp4 (or the reverse) must follow the container.
   if (fromBuffer === "caf" || fromClient === "caf") {
-    return fromBuffer;
+    return fromBuffer ?? "caf";
   }
 
   return fromBuffer;
@@ -128,8 +184,8 @@ export function validateAudioBuffer(audio: Buffer): string | null {
   if (audio.length < MIN_AUDIO_BYTES) {
     return "Recording too short. Hold the button a little longer and try again.";
   }
-  if (!detectAudioFormatFromBuffer(audio)) {
-    return "Recording too short. Hold the button a little longer and try again.";
+  if (!hasWhisperReadyPayload(audio)) {
+    return "Could not read that recording. Hold the button a little longer and try again.";
   }
   return null;
 }

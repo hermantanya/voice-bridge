@@ -1,9 +1,15 @@
-/** Matches RecordingPresets.HIGH_QUALITY (expo-audio records AAC in .m4a). */
+/** Android default; iOS push-to-talk uses WAV (see pushToTalkRecordingOptions). */
 export const NATIVE_RECORDING_FORMAT = "m4a";
+
+/** Minimum encoded audio bytes inside wav/m4a (excludes empty moov/mdat shells). */
+export const MIN_ENCODED_AUDIO_BYTES = 512;
 
 export function nativeRecordingFormatFromUri(uri: string): string {
   try {
     const pathname = new URL(uri).pathname.toLowerCase();
+    if (pathname.endsWith(".wav")) {
+      return "wav";
+    }
     if (pathname.endsWith(".caf")) {
       return "caf";
     }
@@ -24,6 +30,9 @@ export function nativeRecordingFormatFromUri(uri: string): string {
   }
 
   const lower = uri.toLowerCase();
+  if (lower.includes(".wav")) {
+    return "wav";
+  }
   if (lower.includes(".caf")) {
     return "caf";
   }
@@ -120,8 +129,98 @@ export function detectUploadFormatFromBase64(
   return null;
 }
 
+function readFourCc(bytes: Uint8Array, offset: number): string {
+  return String.fromCharCode(
+    bytes[offset] ?? 0,
+    bytes[offset + 1] ?? 0,
+    bytes[offset + 2] ?? 0,
+    bytes[offset + 3] ?? 0,
+  );
+}
+
+function readUint32Be(bytes: Uint8Array, offset: number): number {
+  return (
+    ((bytes[offset] ?? 0) << 24) |
+    ((bytes[offset + 1] ?? 0) << 16) |
+    ((bytes[offset + 2] ?? 0) << 8) |
+    (bytes[offset + 3] ?? 0)
+  ) >>> 0;
+}
+
+function readUint32Le(bytes: Uint8Array, offset: number): number {
+  return (
+    (bytes[offset] ?? 0) |
+    ((bytes[offset + 1] ?? 0) << 8) |
+    ((bytes[offset + 2] ?? 0) << 16) |
+    ((bytes[offset + 3] ?? 0) << 24)
+  ) >>> 0;
+}
+
+function wavPcmDataBytes(bytes: Uint8Array): number {
+  if (!asciiAt(bytes, 0, "RIFF") || !asciiAt(bytes, 8, "WAVE")) {
+    return 0;
+  }
+
+  let offset = 12;
+  while (offset + 8 <= bytes.length) {
+    const chunkId = readFourCc(bytes, offset);
+    const chunkSize = readUint32Le(bytes, offset + 4);
+    if (chunkId === "data") {
+      return Math.max(0, Math.min(chunkSize, bytes.length - offset - 8));
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+
+  return 0;
+}
+
+function isobmffMdatPayloadBytes(bytes: Uint8Array): number {
+  let offset = 0;
+  while (offset + 8 <= bytes.length) {
+    const boxSize = readUint32Be(bytes, offset);
+    const boxType = readFourCc(bytes, offset + 4);
+    if (boxSize < 8) {
+      break;
+    }
+
+    if (boxType === "mdat") {
+      if (boxSize === 0) {
+        return Math.max(0, bytes.length - offset - 8);
+      }
+      return Math.max(0, boxSize - 8);
+    }
+
+    offset += boxSize;
+  }
+
+  return 0;
+}
+
+/** Whisper rejects CAF; m4a needs non-empty mdat, not just an ftyp/moov shell. */
+export function hasWhisperReadyContainer(audioBase64: string): boolean {
+  const format = detectUploadFormatFromBase64(audioBase64);
+  if (!format || format === "caf") {
+    return false;
+  }
+
+  const bytes = decodeBase64Prefix(audioBase64, 65_536);
+  if (!bytes) {
+    return false;
+  }
+
+  if (format === "wav") {
+    return wavPcmDataBytes(bytes) >= MIN_ENCODED_AUDIO_BYTES;
+  }
+
+  if (format === "m4a" || format === "mp4") {
+    return isobmffMdatPayloadBytes(bytes) >= MIN_ENCODED_AUDIO_BYTES;
+  }
+
+  return true;
+}
+
 export function hasValidRecordingContainer(audioBase64: string): boolean {
-  return detectUploadFormatFromBase64(audioBase64) !== null;
+  return hasWhisperReadyContainer(audioBase64);
 }
 
 export function resolveNativeUploadFormat(
