@@ -22,9 +22,11 @@ import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevice
 
 type SettingsScreenProps = {
   myLang: LanguageCode;
-  onMyLangChange: (lang: LanguageCode) => void;
   speakerGender: SpeakerGender;
-  onSpeakerGenderChange: (gender: SpeakerGender) => void;
+  onCommitProfileSettings?: (settings: {
+    hearLang: LanguageCode;
+    speakerGender: SpeakerGender;
+  }) => void;
   voiceStatus: VoiceProfileStatus;
   elevenlabsVoiceId?: string | null;
   onOpenVoiceSetup: () => void;
@@ -46,9 +48,8 @@ type SettingsScreenProps = {
 
 export function SettingsScreen({
   myLang,
-  onMyLangChange,
   speakerGender,
-  onSpeakerGenderChange,
+  onCommitProfileSettings,
   voiceStatus,
   elevenlabsVoiceId,
   onOpenVoiceSetup,
@@ -82,11 +83,11 @@ export function SettingsScreen({
   }, [elevenlabsVoiceId, draftLang, draftGender]);
 
   const handleSaveAndBack = () => {
-    if (draftLang !== myLang) {
-      onMyLangChange(draftLang);
-    }
-    if (draftGender !== speakerGender) {
-      onSpeakerGenderChange(draftGender);
+    if (draftLang !== myLang || draftGender !== speakerGender) {
+      onCommitProfileSettings?.({
+        hearLang: draftLang,
+        speakerGender: draftGender,
+      });
     }
     if (
       showMicrophoneSettings &&

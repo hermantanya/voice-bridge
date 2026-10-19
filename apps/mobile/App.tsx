@@ -188,32 +188,27 @@ export default function App() {
     }
   }, [auth.session, auth.updateProfile, voiceProfile.removeElevenLabsVoice]);
 
-  const handleMyLangChange = useCallback(
-    (lang: LanguageCode) => {
-      setMyLang(lang);
+  const handleCommitProfileSettings = useCallback(
+    (settings: { hearLang: LanguageCode; speakerGender: SpeakerGender }) => {
+      setMyLang(settings.hearLang);
+      setSpeakerGender(settings.speakerGender);
       if (auth.session) {
-        void auth.updateProfile({ hearLang: lang }).catch((error) => {
-          console.warn("Could not sync hearLang to profile:", error);
-        });
+        void auth
+          .updateProfile({
+            hearLang: settings.hearLang,
+            speakerGender: settings.speakerGender,
+          })
+          .catch((error) => {
+            console.warn("Could not sync profile settings:", error);
+          });
         return;
       }
-      void saveDevicePrefs({ hearLang: lang, speakerGender });
+      void saveDevicePrefs({
+        hearLang: settings.hearLang,
+        speakerGender: settings.speakerGender,
+      });
     },
-    [auth.session, auth.updateProfile, speakerGender],
-  );
-
-  const handleSpeakerGenderChange = useCallback(
-    (gender: SpeakerGender) => {
-      setSpeakerGender(gender);
-      if (auth.session) {
-        void auth.updateProfile({ speakerGender: gender }).catch((error) => {
-          console.warn("Could not sync speakerGender to profile:", error);
-        });
-        return;
-      }
-      void saveDevicePrefs({ hearLang: myLang, speakerGender: gender });
-    },
-    [auth.session, auth.updateProfile, myLang],
+    [auth.session, auth.updateProfile],
   );
 
   const handleSignOut = useCallback(async () => {
@@ -440,9 +435,8 @@ export default function App() {
       return (
         <SettingsScreen
           myLang={myLang}
-          onMyLangChange={handleMyLangChange}
           speakerGender={speakerGender}
-          onSpeakerGenderChange={handleSpeakerGenderChange}
+          onCommitProfileSettings={handleCommitProfileSettings}
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
           onOpenVoiceSetup={() => setScreen("voiceSetup")}
@@ -528,10 +522,9 @@ export default function App() {
     audio.setSelectedDeviceId,
     audio.stopRecording,
     handleLeaveSession,
-    handleMyLangChange,
+    handleCommitProfileSettings,
     handleRemoveVoice,
     handleSignOut,
-    handleSpeakerGenderChange,
     handleStartRecording,
     handleGuestMode,
     handleVerifyOtp,

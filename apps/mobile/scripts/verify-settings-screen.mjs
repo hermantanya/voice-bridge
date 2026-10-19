@@ -13,6 +13,7 @@ const required = [
   ["Save and go back", "save button label"],
   [">Back</Text>", "discard back button"],
   ["handleSaveAndBack", "save applies draft settings"],
+  ["onCommitProfileSettings", "atomic profile save"],
   ["Sign in", "guest account sign-in entry"],
   ["Create account", "guest account create entry"],
   ["showMicrophoneSettings", "microphone settings section"],
