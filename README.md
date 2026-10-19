@@ -232,8 +232,8 @@ Every push and pull request to `main` runs the **Ship gate** GitHub Actions job:
 |---|---|
 | `npm run check` | Full ship gate: tests + verify + server typecheck |
 | `npm test` | Server integration/unit tests, then mobile unit tests |
-| `npm run verify` | Mobile layout/docs checks + **31** `verify-regressions` source suites (includes batch PTT `stopStreamingPtt` guard) |
-| `npm run check:regression` | Same 31 regression suites only (`apps/mobile/scripts/verify-regressions.mjs`) |
+| `npm run verify` | Mobile layout/docs checks + **35** `verify-regressions` source suites (includes batch PTT `stopStreamingPtt` guard and speaker/listener TTS playback) |
+| `npm run check:regression` | Same 35 regression suites only (`apps/mobile/scripts/verify-regressions.mjs`) |
 | `npm run typecheck` | Server `tsc --noEmit` |
 
 **Server tests** (explicit list in `server/package.json`) include `latency.integration.test.ts`, `streamingPtt.integration.test.ts`, and `join-room.integration.test.ts`.

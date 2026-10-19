@@ -24,6 +24,7 @@ import {
   type PartnerPartial,
   type TranscriptEntry,
 } from "../session/transcriptState";
+import { shouldPlayTranslationAudio } from "../session/translationPlayback";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -142,6 +143,9 @@ type UseSocketOptions = {
   onPartialTranslationAudio?: (payload: {
     audioBase64?: string;
     translatedText?: string;
+    fromParticipantId?: string;
+    turnId?: string;
+    role?: string;
   }) => void;
 };
 
@@ -840,7 +844,24 @@ export function useSocket({
 
     socket.on(
       "partial_translation_audio",
-      (payload: { audioBase64?: string; translatedText?: string }) => {
+      (payload: {
+        audioBase64?: string;
+        translatedText?: string;
+        fromParticipantId?: string;
+        turnId?: string;
+        role?: string;
+      }) => {
+        if (
+          !shouldPlayTranslationAudio(participantIdRef.current, {
+            kind: "partial_translation_audio",
+            fromParticipantId: payload.fromParticipantId,
+            turnId: payload.turnId,
+            role: payload.role,
+            audioBase64: payload.audioBase64,
+          })
+        ) {
+          return;
+        }
         onPartialAudioRef.current?.(payload);
       },
     );
@@ -899,7 +920,17 @@ export function useSocket({
         return next.entries;
       });
       applyTurnUsage(payload, "received");
-      onIncomingRef.current?.(payload);
+      if (
+        shouldPlayTranslationAudio(participantIdRef.current, {
+          kind: "translation_result",
+          fromParticipantId: payload.fromParticipantId,
+          turnId: payload.turnId,
+          audioBase64: payload.audioBase64,
+          skippedTts: payload.skippedTts,
+        })
+      ) {
+        onIncomingRef.current?.(payload);
+      }
     });
 
     socket.on("translation_sent", (payload: TranslationResult) => {

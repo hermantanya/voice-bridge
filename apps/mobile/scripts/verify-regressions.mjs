@@ -157,6 +157,39 @@ const checks = [
     ],
   },
   {
+    name: "speaker must not play own translation TTS",
+    file: "src/hooks/useSocket.ts",
+    required: [
+      "shouldPlayTranslationAudio",
+      'kind: "translation_result"',
+      'kind: "partial_translation_audio"',
+      "participantIdRef.current",
+      'socket.on("translation_result"',
+      'socket.on("translation_sent"',
+    ],
+    forbidden: [],
+  },
+  {
+    name: "App playback guards speaker vs listener TTS",
+    file: "App.tsx",
+    required: [
+      "shouldPlayTranslationAudio",
+      "myParticipantIdRef",
+      'kind: "translation_result"',
+      'kind: "partial_translation_audio"',
+    ],
+  },
+  {
+    name: "translation playback unit tests exist",
+    file: "src/session/translationPlayback.test.ts",
+    required: [
+      "shouldPlayTranslationAudio",
+      "translation_sent",
+      "partial_translation_audio",
+      'role: "speaker"',
+    ],
+  },
+  {
     name: "voice profile hook and storage exist",
     file: "src/hooks/useVoiceProfile.ts",
     required: [

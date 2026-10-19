@@ -26,7 +26,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node --import tsx --test src/api/readApiJson.test.ts src/config.test.ts src/session/appState.test.ts src/session/applyServerProfileVoice.test.ts src/session/conversationMode.test.ts src/session/enrollmentPrompts.test.ts src/session/holdToTalkSession.test.ts src/session/nativeRecordingFormat.test.ts src/session/nativeRecordingUri.test.ts src/session/sessionScreenState.test.ts src/session/transcriptState.test.ts src/utils/timeFormat.test.ts src/web/microphoneDevices.test.ts",
+    "test": "node --import tsx --test src/api/readApiJson.test.ts src/config.test.ts src/session/appState.test.ts src/session/applyServerProfileVoice.test.ts src/session/conversationMode.test.ts src/session/enrollmentPrompts.test.ts src/session/holdToTalkSession.test.ts src/session/nativeRecordingFormat.test.ts src/session/nativeRecordingUri.test.ts src/session/sessionScreenState.test.ts src/session/transcriptState.test.ts src/session/translationPlayback.test.ts src/utils/timeFormat.test.ts src/web/microphoneDevices.test.ts",
     "verify:settings": "node scripts/verify-settings-screen.mjs",
     "verify:regressions": "node scripts/verify-regressions.mjs",
     "verify:docs": "node scripts/verify-docs.mjs",

@@ -18,6 +18,7 @@ import {
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp, shouldReleaseTurnAfterLocalStop } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { isStreamingPttUplinkAvailable } from "./src/session/streamingPtt";
+import { shouldPlayTranslationAudio } from "./src/session/translationPlayback";
 import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
 import {
@@ -68,6 +69,7 @@ export default function App() {
   );
   const holdStartedAtRef = useRef<number | null>(null);
   const audioPlayQueueRef = useRef(Promise.resolve());
+  const myParticipantIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,8 +353,13 @@ export default function App() {
     (result: TranslationResult) => {
       if (
         !playTranslatedVoice ||
-        result.skippedTts ||
-        !result.audioBase64.trim()
+        !shouldPlayTranslationAudio(myParticipantIdRef.current, {
+          kind: "translation_result",
+          fromParticipantId: result.fromParticipantId,
+          turnId: result.turnId,
+          audioBase64: result.audioBase64,
+          skippedTts: result.skippedTts,
+        })
       ) {
         return;
       }
@@ -362,11 +369,25 @@ export default function App() {
   );
 
   const handlePartialTranslationAudio = useCallback(
-    (payload: { audioBase64?: string }) => {
-      if (!playTranslatedVoice || !payload.audioBase64?.trim()) {
+    (payload: {
+      audioBase64?: string;
+      fromParticipantId?: string;
+      turnId?: string;
+      role?: string;
+    }) => {
+      if (
+        !playTranslatedVoice ||
+        !shouldPlayTranslationAudio(myParticipantIdRef.current, {
+          kind: "partial_translation_audio",
+          fromParticipantId: payload.fromParticipantId,
+          turnId: payload.turnId,
+          role: payload.role,
+          audioBase64: payload.audioBase64,
+        })
+      ) {
         return;
       }
-      enqueueIncomingAudio(payload.audioBase64);
+      enqueueIncomingAudio(payload.audioBase64!);
     },
     [enqueueIncomingAudio, playTranslatedVoice],
   );
@@ -391,6 +412,10 @@ export default function App() {
       ),
     [streamingPttDev, socket.serverStreamingPttEnabled],
   );
+
+  useEffect(() => {
+    myParticipantIdRef.current = socket.participantId;
+  }, [socket.participantId]);
 
   const handleAudioReady = useCallback(
     async (
