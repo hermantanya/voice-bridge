@@ -369,8 +369,8 @@ export function useSocket({
 
   useEffect(() => {
     onIncomingRef.current = onIncomingTranslation;
-  onPartialAudioRef.current = onPartialTranslationAudio;
-  }, [onIncomingTranslation]);
+    onPartialAudioRef.current = onPartialTranslationAudio;
+  }, [onIncomingTranslation, onPartialTranslationAudio]);
 
   useEffect(() => {
     myLangRef.current = myLang;

@@ -351,21 +351,28 @@ export default function App() {
       });
   }, []);
 
-  const handleIncomingTranslation = useCallback((result: TranslationResult) => {
-    if (result.skippedTts || !result.audioBase64.trim()) {
-      return;
-    }
-    enqueueIncomingAudio(result.audioBase64);
-  }, [enqueueIncomingAudio]);
+  const handleIncomingTranslation = useCallback(
+    (result: TranslationResult) => {
+      if (
+        !playTranslatedVoice ||
+        result.skippedTts ||
+        !result.audioBase64.trim()
+      ) {
+        return;
+      }
+      enqueueIncomingAudio(result.audioBase64);
+    },
+    [enqueueIncomingAudio, playTranslatedVoice],
+  );
 
   const handlePartialTranslationAudio = useCallback(
     (payload: { audioBase64?: string }) => {
-      if (!payload.audioBase64?.trim()) {
+      if (!playTranslatedVoice || !payload.audioBase64?.trim()) {
         return;
       }
       enqueueIncomingAudio(payload.audioBase64);
     },
-    [enqueueIncomingAudio],
+    [enqueueIncomingAudio, playTranslatedVoice],
   );
 
   const socket = useSocket({
@@ -730,6 +737,7 @@ export default function App() {
     socket.lastReceived,
     socket.status,
     socket.transcript,
+    socket.partnerPartial,
   ]);
 
   if (!auth.loaded || !entryReady) {

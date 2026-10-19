@@ -72,6 +72,32 @@ const checks = [
     required: ["emitJoinRoom", "connectedRef", "usedClonedVoice"],
   },
   {
+    name: "socket handles streaming partial partner events",
+    file: "src/hooks/useSocket.ts",
+    required: [
+      "partial_transcript",
+      "partial_translation",
+      "partial_translation_audio",
+      "partnerPartial",
+      "setPartnerPartial",
+    ],
+  },
+  {
+    name: "session shows partner live partial card",
+    file: "src/screens/SessionScreen.tsx",
+    required: ["Partner (live)", "partnerPartial", "accessibilityLiveRegion"],
+  },
+  {
+    name: "App re-renders session on partner partial updates",
+    file: "App.tsx",
+    required: [
+      "partnerPartial={socket.partnerPartial}",
+      "socket.partnerPartial",
+      "onPartialTranslationAudio",
+      "playTranslatedVoice",
+    ],
+  },
+  {
     name: "voice profile hook and storage exist",
     file: "src/hooks/useVoiceProfile.ts",
     required: [
