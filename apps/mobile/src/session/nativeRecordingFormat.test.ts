@@ -6,10 +6,10 @@ import {
   nativeRecordingFormatForUpload,
 } from "./nativeRecordingFormat.js";
 
-test("nativeRecordingFormatForUpload remaps caf URIs to m4a", () => {
+test("nativeRecordingFormatForUpload preserves caf URIs for the server", () => {
   assert.equal(
     nativeRecordingFormatForUpload("file:///var/recording.caf"),
-    "m4a",
+    "caf",
   );
   assert.equal(
     nativeRecordingFormatForUpload(

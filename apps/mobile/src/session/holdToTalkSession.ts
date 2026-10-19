@@ -28,7 +28,12 @@ export async function runHoldToTalkStart(
     return "cancelled_before_record";
   }
 
-  await deps.startRecording();
+  try {
+    await deps.startRecording();
+  } catch (error) {
+    await deps.releaseTurn();
+    throw error;
+  }
 
   if (!deps.stillHolding()) {
     const delivered = await deps.stopRecording();

@@ -33,13 +33,9 @@ export function nativeRecordingFormatFromUri(uri: string): string {
   return NATIVE_RECORDING_FORMAT;
 }
 
-/** Whisper accepts mp4/m4a, not Core Audio `.caf` containers from legacy iOS recordings. */
+/** Extension sent to the server; must match the on-disk container (do not remap CAF → m4a). */
 export function nativeRecordingFormatForUpload(uri: string): string {
-  const fromUri = nativeRecordingFormatFromUri(uri);
-  if (fromUri === "caf") {
-    return NATIVE_RECORDING_FORMAT;
-  }
-  return fromUri;
+  return nativeRecordingFormatFromUri(uri);
 }
 
 /** Wall-clock / recorder duration; keep low so normal holds are not rejected. */

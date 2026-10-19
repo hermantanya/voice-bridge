@@ -14,16 +14,16 @@ const WHISPER_FORMATS = new Set([
   "oga",
   "ogg",
   "flac",
+  "caf",
 ]);
 
 /**
  * Maps client-reported extensions to Whisper-compatible file extensions.
- * iOS expo-av used `.caf` URIs for AAC; Whisper expects mp4/m4a, not caf.
  */
 export function normalizeAudioFormat(format: string | undefined): string {
   const raw = (format ?? "webm").trim().toLowerCase().replace(/^\./, "");
   if (raw === "caf" || raw === "x-caf") {
-    return "m4a";
+    return "caf";
   }
   if (raw === "3gp" || raw === "3gpp") {
     return "3gp";
@@ -54,9 +54,74 @@ export function mimeTypeForAudioFormat(format: string): string {
       return "audio/ogg";
     case "flac":
       return "audio/flac";
+    case "caf":
+      return "audio/x-caf";
     default:
       return "audio/webm";
   }
+}
+
+/** Prefer container magic over client extension (iOS often mislabels CAF as m4a). */
+export function detectAudioFormatFromBuffer(audio: Buffer): string | null {
+  if (audio.length < 12) {
+    return null;
+  }
+
+  if (audio.subarray(0, 4).toString("ascii") === "caff") {
+    return "caf";
+  }
+
+  if (audio.subarray(4, 8).toString("ascii") === "ftyp") {
+    return "m4a";
+  }
+
+  if (
+    audio.subarray(0, 4).toString("ascii") === "RIFF" &&
+    audio.subarray(8, 12).toString("ascii") === "WAVE"
+  ) {
+    return "wav";
+  }
+
+  if (
+    audio[0] === 0x1a &&
+    audio[1] === 0x45 &&
+    audio[2] === 0xdf &&
+    audio[3] === 0xa3
+  ) {
+    return "webm";
+  }
+
+  if (
+    audio.subarray(0, 3).toString("ascii") === "ID3" ||
+    (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0)
+  ) {
+    return "mp3";
+  }
+
+  return null;
+}
+
+export function resolveWhisperUploadFormat(
+  audio: Buffer,
+  clientFormat: string | undefined,
+): string {
+  const fromClient = normalizeAudioFormat(clientFormat);
+  const fromBuffer = detectAudioFormatFromBuffer(audio);
+
+  if (!fromBuffer) {
+    return fromClient;
+  }
+
+  if (fromClient === fromBuffer) {
+    return fromClient;
+  }
+
+  // CAF bytes labeled m4a/mp4 (or the reverse) must follow the container.
+  if (fromBuffer === "caf" || fromClient === "caf") {
+    return fromBuffer;
+  }
+
+  return fromBuffer;
 }
 
 export function validateAudioBuffer(audio: Buffer): string | null {

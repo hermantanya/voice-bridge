@@ -383,15 +383,22 @@ export default function App() {
   const handleStartRecording = useCallback(
     async (stillHolding: () => boolean) => {
       holdStartedAtRef.current = Date.now();
-      const result = await runHoldToTalkStart({
-        stillHolding,
-        claimTurn: socket.claimTurn,
-        releaseTurn: socket.releaseTurn,
-        startRecording: audio.startRecording,
-        stopRecording: handleStopRecording,
-      });
+      let result: Awaited<ReturnType<typeof runHoldToTalkStart>>;
+      try {
+        result = await runHoldToTalkStart({
+          stillHolding,
+          claimTurn: socket.claimTurn,
+          releaseTurn: socket.releaseTurn,
+          startRecording: audio.startRecording,
+          stopRecording: handleStopRecording,
+        });
+      } catch (error) {
+        holdStartedAtRef.current = null;
+        throw error;
+      }
 
       if (result === "denied") {
+        holdStartedAtRef.current = null;
         throw new Error("Someone else started speaking first");
       }
 

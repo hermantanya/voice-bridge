@@ -99,6 +99,20 @@ test("runHoldToTalkStart keeps turn when quick stop delivers audio", async () =>
   assert.equal(calls.releaseTurn, 0);
 });
 
+test("runHoldToTalkStart releases turn when startRecording throws", async () => {
+  const { deps, calls } = createDeps({
+    startRecording: async () => {
+      throw new Error("Microphone permission is required.");
+    },
+  });
+
+  await assert.rejects(
+    () => runHoldToTalkStart(deps),
+    /Microphone permission/,
+  );
+  assert.equal(calls.releaseTurn, 1);
+});
+
 test("runHoldToTalkStart returns denied when claimTurn fails", async () => {
   const { deps, calls } = createDeps({
     claimTurn: async () => false,

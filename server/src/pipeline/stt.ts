@@ -3,7 +3,7 @@ import { File } from "node:buffer";
 import { getOpenAIClient } from "./openai.js";
 import {
   mimeTypeForAudioFormat,
-  normalizeAudioFormat,
+  resolveWhisperUploadFormat,
 } from "./audioFormat.js";
 import {
   normalizeDetectedLanguage,
@@ -32,7 +32,7 @@ export async function transcribe(
   languageOverride?: string,
 ): Promise<TranscriptionResult> {
   const openai = getOpenAIClient();
-  const normalizedFormat = normalizeAudioFormat(format);
+  const normalizedFormat = resolveWhisperUploadFormat(audio, format);
   const mimeType = mimeTypeForAudioFormat(normalizedFormat);
   const file = new File([audio], `audio.${normalizedFormat}`, {
     type: mimeType,
