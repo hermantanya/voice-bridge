@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; **PTT latency** — early `translation_transcript` before TTS + Settings **Transcript only**; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **Streaming PTT** milestone documented below; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; **PTT latency** — early `translation_transcript` before TTS + Settings **Transcript only**; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **Streaming PTT** milestone documented below; **external beta** optional when domain ready). **Any Streaming PTT change must keep batch PTT regression tests green** (`latency.integration`, `verify-regressions`, `transcriptState` client tests).
 
 ---
 

@@ -83,6 +83,53 @@ const checks = [
     ],
   },
   {
+    name: "socket appends written translation transcript events",
+    file: "src/hooks/useSocket.ts",
+    required: [
+      "translation_transcript",
+      "translation_sent_transcript",
+      "translation_result",
+      "translation_sent",
+      "appendTranscriptIfNew",
+      "applyTranslationResultToTranscript",
+      "flushPartnerPartialToTranscript",
+    ],
+  },
+  {
+    name: "batch PTT upload when streaming uplink off",
+    file: "App.tsx",
+    required: [
+      "streamingPttUplink",
+      "sendAudioChunk",
+      "stopStreamingPtt",
+      "Promise<boolean>",
+    ],
+    forbidden: ["if (streamingPttUplink) {\n        void socket.stopStreamingPtt"],
+  },
+  {
+    name: "session transcript panel render path",
+    file: "src/screens/SessionScreen.tsx",
+    required: ["transcript:", "TranscriptPanel", "entries={transcript}"],
+  },
+  {
+    name: "App session memo tracks transcript updates",
+    file: "App.tsx",
+    required: [
+      "transcript={socket.transcript}",
+      "socket.transcript",
+      "socket.partnerPartial",
+    ],
+  },
+  {
+    name: "transcript reducer unit tests exist",
+    file: "src/session/transcriptState.test.ts",
+    required: [
+      "translation_transcript",
+      "translation_result",
+      "flushPartnerPartialToTranscript",
+    ],
+  },
+  {
     name: "session shows partner live partial card",
     file: "src/screens/SessionScreen.tsx",
     required: ["Partner (live)", "partnerPartial", "accessibilityLiveRegion"],

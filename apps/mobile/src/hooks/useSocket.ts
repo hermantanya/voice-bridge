@@ -14,6 +14,15 @@ import {
   MIN_RECORDING_DURATION_MS,
   MIN_RECORDING_BYTES,
 } from "../session/nativeRecordingFormat";
+import {
+  appendTranscriptIfNew,
+  applyTranslationResultToTranscript,
+  applyTranslationSentToTranscript,
+  flushPartnerPartialToTranscript,
+  partnerPartialFromEvent,
+  type PartnerPartial,
+  type TranscriptEntry,
+} from "../session/transcriptState";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -59,41 +68,7 @@ export type UsageSnapshot = {
   sessionStartedAt: number | null;
 };
 
-export type TranscriptEntry = {
-  id: string;
-  turnId?: string;
-  direction: "sent" | "received";
-  sourceText: string;
-  translatedText: string;
-  receivedAt: number;
-  latencyMs: number;
-};
-
-function transcriptKey(
-  direction: TranscriptEntry["direction"],
-  turnId: string,
-): string {
-  return `${direction}:${turnId}`;
-}
-
-function createTranscriptEntry(
-  direction: TranscriptEntry["direction"],
-  payload: TranslationResult | TranslationTranscriptPayload,
-  latencyMs: number,
-): TranscriptEntry {
-  const turnId = payload.turnId;
-  return {
-    id:
-      turnId ??
-      `${direction}-${payload.fromParticipantId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    turnId,
-    direction,
-    sourceText: payload.sourceText,
-    translatedText: payload.translatedText,
-    receivedAt: Date.now(),
-    latencyMs,
-  };
-}
+export type { TranscriptEntry };
 
 type JoinedRoomPayload = {
   roomCode: string;
@@ -190,6 +165,7 @@ export function useSocket({
   const streamingSessionActiveRef = useRef(false);
   const streamingChunkCountRef = useRef(0);
   const transcriptTurnKeysRef = useRef(new Set<string>());
+  const partnerPartialRef = useRef<PartnerPartial | null>(null);
   const connectedRef = useRef(false);
 
   const emitJoinRoom = useCallback(() => {
@@ -331,10 +307,14 @@ export function useSocket({
   const [partnerBillableMs, setPartnerBillableMs] = useState(0);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [usageTick, setUsageTick] = useState(0);
-  const [partnerPartial, setPartnerPartial] = useState<{
-    sourceText: string;
-    translatedText: string;
-  } | null>(null);
+  const [partnerPartial, setPartnerPartialState] = useState<PartnerPartial | null>(
+    null,
+  );
+
+  const setPartnerPartial = useCallback((value: PartnerPartial | null) => {
+    partnerPartialRef.current = value;
+    setPartnerPartialState(value);
+  }, []);
 
   const isMyTurn =
     participantId !== null &&
@@ -434,7 +414,8 @@ export function useSocket({
     setParticipants(0);
     setPartnerLang(null);
     setTranscript([]);
-    setPartnerPartial(null);
+    partnerPartialRef.current = null;
+    setPartnerPartialState(null);
     streamingSessionActiveRef.current = false;
     streamingChunkCountRef.current = 0;
     transcriptTurnKeysRef.current.clear();
@@ -522,11 +503,11 @@ export function useSocket({
       format: string,
       recordingDurationMs: number,
       recordingStartedAt?: number,
-    ) => {
+    ): boolean => {
       const socket = socketRef.current;
       if (!socket?.connected) {
         setErrorMessage("Not connected to server");
-        return;
+        return false;
       }
 
       const me = participantIdRef.current;
@@ -534,26 +515,26 @@ export function useSocket({
 
       if (!me || turn.turnParticipantId !== me) {
         setErrorMessage("Not your turn");
-        return;
+        return false;
       }
 
       const trimmed = audioBase64.trim();
       if (!trimmed) {
         setErrorMessage("Recording was empty. Hold the button a little longer.");
-        return;
+        return false;
       }
 
       const byteLength = Math.floor((trimmed.length * 3) / 4);
       if (byteLength < MIN_RECORDING_BYTES) {
         setErrorMessage("Recording too short. Hold the button a little longer.");
-        return;
+        return false;
       }
 
       if (!hasValidRecordingContainer(trimmed)) {
         setErrorMessage(
           "Could not read that recording. Hold the button a little longer and try again.",
         );
-        return;
+        return false;
       }
 
       pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
@@ -561,7 +542,7 @@ export function useSocket({
         setErrorMessage(
           "Recording too short. Hold the button a little longer.",
         );
-        return;
+        return false;
       }
 
       setErrorMessage(null);
@@ -571,6 +552,7 @@ export function useSocket({
         recordingDurationMs: pendingSpeechMsRef.current,
         recordingStartedAt,
       });
+      return true;
     },
     [],
   );
@@ -659,13 +641,14 @@ export function useSocket({
           streamingPttDebugLog("stop batch fallback (no streaming session)", {
             chunks: streamingChunkCountRef.current,
           });
-          sendAudioChunk(
-            audioBase64,
-            format,
-            pendingSpeechMsRef.current,
-            recordingStartedAt,
+          resolve(
+            sendAudioChunk(
+              audioBase64,
+              format,
+              pendingSpeechMsRef.current,
+              recordingStartedAt,
+            ),
           );
-          resolve(true);
           return;
         }
 
@@ -692,7 +675,7 @@ export function useSocket({
             streamingPttDebugLog("streaming_ptt_stop failed, batch fallback", {
               message: response?.message,
             });
-            sendAudioChunk(
+            const submitted = sendAudioChunk(
               audioBase64,
               format,
               pendingSpeechMsRef.current,
@@ -701,7 +684,7 @@ export function useSocket({
             if (response?.message) {
               setErrorMessage(response.message);
             }
-            resolve(true);
+            resolve(submitted);
           },
         );
       });
@@ -795,6 +778,17 @@ export function useSocket({
       (payload: { roomCode: string } & TurnState) => {
         applyTurnState(payload);
         if (payload.phase === "waiting") {
+          const partial = partnerPartialRef.current;
+          if (partial) {
+            setTranscript((entries) => {
+              const flushed = flushPartnerPartialToTranscript(
+                entries,
+                transcriptTurnKeysRef.current,
+                partial,
+              );
+              return flushed.entries;
+            });
+          }
           setPartnerPartial(null);
         }
       },
@@ -804,10 +798,10 @@ export function useSocket({
       if (payload.fromParticipantId === participantIdRef.current) {
         return;
       }
-      setPartnerPartial({
-        sourceText: payload.sourceText ?? "",
-        translatedText: payload.translatedText,
-      });
+      const next = partnerPartialFromEvent(payload);
+      if (next) {
+        setPartnerPartial(next);
+      }
     };
 
     socket.on("partial_transcript", (payload: PartialTranslationPayload) => {
@@ -817,10 +811,16 @@ export function useSocket({
       streamingPttDebugLog("partial_transcript received", {
         chars: payload.sourceText?.length ?? 0,
       });
-      setPartnerPartial((current) => ({
-        sourceText: payload.sourceText ?? current?.sourceText ?? "",
-        translatedText: current?.translatedText ?? "",
-      }));
+      setPartnerPartialState((current) => {
+        const next: PartnerPartial = {
+          turnId: payload.turnId,
+          fromParticipantId: payload.fromParticipantId,
+          sourceText: payload.sourceText ?? current?.sourceText ?? "",
+          translatedText: current?.translatedText ?? "",
+        };
+        partnerPartialRef.current = next;
+        return next;
+      });
     });
 
     socket.on("partial_translation", (payload: PartialTranslationPayload) => {
@@ -837,87 +837,60 @@ export function useSocket({
       },
     );
 
-    const appendTranscriptIfNew = (
-      direction: TranscriptEntry["direction"],
-      payload: TranslationResult | TranslationTranscriptPayload,
-      latencyMs: number,
-    ) => {
-      if (payload.turnId) {
-        const key = transcriptKey(direction, payload.turnId);
-        if (transcriptTurnKeysRef.current.has(key)) {
-          return;
-        }
-        transcriptTurnKeysRef.current.add(key);
-      }
-
-      setTranscript((current) => [
-        ...current,
-        createTranscriptEntry(direction, payload, latencyMs),
-      ]);
-    };
-
-    const refreshTranscriptLatency = (
-      direction: TranscriptEntry["direction"],
-      turnId: string,
-      latencyMs: number,
-    ) => {
-      setTranscript((current) =>
-        current.map((entry) =>
-          entry.turnId === turnId && entry.direction === direction
-            ? { ...entry, latencyMs }
-            : entry,
-        ),
-      );
-    };
-
     socket.on("translation_transcript", (payload: TranslationTranscriptPayload) => {
-      appendTranscriptIfNew(
-        "received",
-        payload,
-        payload.transcriptLatencyMs ?? 0,
-      );
+      setTranscript((entries) => {
+        const next = appendTranscriptIfNew(
+          entries,
+          transcriptTurnKeysRef.current,
+          "received",
+          payload,
+          payload.transcriptLatencyMs ?? 0,
+        );
+        return next.entries;
+      });
     });
 
     socket.on(
       "translation_sent_transcript",
       (payload: TranslationTranscriptPayload) => {
-        appendTranscriptIfNew(
-          "sent",
-          payload,
-          payload.transcriptLatencyMs ?? 0,
-        );
+        setTranscript((entries) => {
+          const next = appendTranscriptIfNew(
+            entries,
+            transcriptTurnKeysRef.current,
+            "sent",
+            payload,
+            payload.transcriptLatencyMs ?? 0,
+          );
+          return next.entries;
+        });
       },
     );
 
     socket.on("translation_result", (payload: TranslationResult) => {
       setPartnerPartial(null);
       setLastReceived(payload);
-      if (payload.turnId) {
-        const key = transcriptKey("received", payload.turnId);
-        if (transcriptTurnKeysRef.current.has(key)) {
-          refreshTranscriptLatency("received", payload.turnId, payload.latencyMs);
-        } else {
-          appendTranscriptIfNew("received", payload, payload.latencyMs);
-        }
-      } else {
-        appendTranscriptIfNew("received", payload, payload.latencyMs);
-      }
+      setTranscript((entries) => {
+        const next = applyTranslationResultToTranscript(
+          entries,
+          transcriptTurnKeysRef.current,
+          payload,
+        );
+        return next.entries;
+      });
       applyTurnUsage(payload, "received");
       onIncomingRef.current?.(payload);
     });
 
     socket.on("translation_sent", (payload: TranslationResult) => {
       setLastSent(payload);
-      if (payload.turnId) {
-        const key = transcriptKey("sent", payload.turnId);
-        if (transcriptTurnKeysRef.current.has(key)) {
-          refreshTranscriptLatency("sent", payload.turnId, payload.latencyMs);
-        } else {
-          appendTranscriptIfNew("sent", payload, payload.latencyMs);
-        }
-      } else {
-        appendTranscriptIfNew("sent", payload, payload.latencyMs);
-      }
+      setTranscript((entries) => {
+        const next = applyTranslationSentToTranscript(
+          entries,
+          transcriptTurnKeysRef.current,
+          payload,
+        );
+        return next.entries;
+      });
       applyTurnUsage(payload, "sent");
     });
 

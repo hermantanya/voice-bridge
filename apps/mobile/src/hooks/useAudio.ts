@@ -38,7 +38,7 @@ type UseAudioOptions = {
     audioBase64: string,
     format: string,
     recordingDurationMs: number,
-  ) => void;
+  ) => boolean | Promise<boolean>;
   enabled?: boolean;
   /** Web-only streaming uplink during hold (PCM16 chunks). */
   streamingUplinkEnabled?: boolean;
@@ -292,19 +292,20 @@ export function useAudio({
   }, [permissionGranted]);
 
   const deliverRecording = useCallback(
-    (
+    async (
       audioBase64: string,
       format: string,
       recordingDurationMs: number,
-    ): boolean => {
+    ): Promise<boolean> => {
       recordingStartedAtRef.current = null;
 
       if (!isDeliverableRecording(audioBase64, recordingDurationMs)) {
         return false;
       }
 
-      onAudioReadyRef.current(audioBase64, format, recordingDurationMs);
-      return true;
+      return Boolean(
+        await onAudioReadyRef.current(audioBase64, format, recordingDurationMs),
+      );
     },
     [],
   );
@@ -432,7 +433,7 @@ export function useAudio({
             ? Math.max(0, Date.now() - startedAt)
             : 0;
           const audioBase64 = await blobToBase64(blob);
-          const delivered = deliverRecording(
+          const delivered = await deliverRecording(
             audioBase64,
             format,
             recordingDurationMs,

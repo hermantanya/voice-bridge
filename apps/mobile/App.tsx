@@ -388,22 +388,25 @@ export default function App() {
   });
 
   const handleAudioReady = useCallback(
-    (audioBase64: string, format: string, recordingDurationMs: number) => {
+    async (
+      audioBase64: string,
+      format: string,
+      recordingDurationMs: number,
+    ): Promise<boolean> => {
       const holdStartedAt = holdStartedAtRef.current;
       holdStartedAtRef.current = null;
       const durationMs = holdStartedAt
         ? Math.max(recordingDurationMs, Date.now() - holdStartedAt)
         : recordingDurationMs;
       if (streamingPttUplink) {
-        void socket.stopStreamingPtt(
+        return socket.stopStreamingPtt(
           audioBase64,
           format,
           durationMs,
           holdStartedAt ?? undefined,
         );
-        return;
       }
-      socket.sendAudioChunk(
+      return socket.sendAudioChunk(
         audioBase64,
         format,
         durationMs,
