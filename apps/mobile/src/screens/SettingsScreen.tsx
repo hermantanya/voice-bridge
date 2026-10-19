@@ -38,12 +38,10 @@ type SettingsScreenProps = {
   signedInEmail?: string | null;
   authBusy?: boolean;
   authError?: string | null;
-  onRequestOtp?: (
-    email: string,
-  ) => Promise<{ devCode?: string; message?: string } | null>;
-  onVerifyOtp?: (email: string, code: string) => Promise<unknown>;
   onSignOut?: () => Promise<void>;
   onClearAuthError?: () => void;
+  onOpenSignIn?: () => void;
+  onOpenCreateAccount?: () => void;
 };
 
 export function SettingsScreen({
@@ -64,18 +62,14 @@ export function SettingsScreen({
   signedInEmail = null,
   authBusy = false,
   authError = null,
-  onRequestOtp,
-  onVerifyOtp,
   onSignOut,
   onClearAuthError,
+  onOpenSignIn,
+  onOpenCreateAccount,
 }: SettingsScreenProps) {
   const [previewText, setPreviewText] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authCode, setAuthCode] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [authHint, setAuthHint] = useState<string | null>(null);
   const [draftLang, setDraftLang] = useState(myLang);
   const [draftGender, setDraftGender] = useState(speakerGender);
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
@@ -105,10 +99,6 @@ export function SettingsScreen({
   };
 
   const handleDiscardAndBack = () => {
-    setAuthEmail("");
-    setAuthCode("");
-    setOtpSent(false);
-    setAuthHint(null);
     onClearAuthError?.();
     onBack();
   };
@@ -122,8 +112,9 @@ export function SettingsScreen({
     <>
       <Text style={styles.title}>Account</Text>
       <Text style={styles.subtitle}>
-        Sign in to sync Translate to, gender, and your enrolled voice across
-        devices. Guests keep voice enrollment on this device only.
+        {signedInEmail
+          ? "Your Translate to, gender, and voice sync across devices signed in with this email."
+          : "Create an account to sync settings across devices. Guest mode keeps language and voice on this device only."}
       </Text>
 
       <View style={styles.card}>
@@ -143,93 +134,25 @@ export function SettingsScreen({
           </>
         ) : (
           <>
-            <TextInput
-              style={styles.textInput}
-              value={authEmail}
-              onChangeText={(value) => {
-                setAuthEmail(value);
-                onClearAuthError?.();
-              }}
-              placeholder="Email"
-              placeholderTextColor="#64748b"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={!authBusy}
-            />
-            {!otpSent ? (
-              <Pressable
-                style={styles.setupButton}
-                disabled={authBusy || !authEmail.trim() || !onRequestOtp}
-                onPress={() => {
-                  void (async () => {
-                    const result = await onRequestOtp!(authEmail.trim());
-                    if (!result) {
-                      return;
-                    }
-                    setOtpSent(true);
-                    setAuthHint(
-                      result.devCode
-                        ? `Dev code: ${result.devCode}`
-                        : (result.message ?? "Check your email for a code."),
-                    );
-                  })();
-                }}
-              >
-                {authBusy ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.setupButtonText}>Send sign-in code</Text>
-                )}
-              </Pressable>
-            ) : (
-              <>
-                <TextInput
-                  style={styles.textInput}
-                  value={authCode}
-                  onChangeText={(value) => {
-                    setAuthCode(value.replace(/\D/g, "").slice(0, 6));
-                    onClearAuthError?.();
-                  }}
-                  placeholder="6-digit code"
-                  placeholderTextColor="#64748b"
-                  keyboardType="number-pad"
-                  editable={!authBusy}
-                />
-                {authHint ? (
-                  <Text style={styles.statusHint}>{authHint}</Text>
-                ) : null}
-                <Pressable
-                  style={styles.setupButton}
-                  disabled={
-                    authBusy || authCode.length !== 6 || !onVerifyOtp
-                  }
-                  onPress={() => {
-                    void (async () => {
-                      const profile = await onVerifyOtp!(
-                        authEmail.trim(),
-                        authCode,
-                      );
-                      if (!profile) {
-                        return;
-                      }
-                      setOtpSent(false);
-                      setAuthCode("");
-                      setAuthHint(null);
-                    })();
-                  }}
-                >
-                  {authBusy ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.setupButtonText}>Verify and sign in</Text>
-                  )}
-                </Pressable>
-              </>
-            )}
+            <Pressable
+              style={styles.setupButton}
+              disabled={!onOpenSignIn}
+              onPress={() => onOpenSignIn?.()}
+            >
+              <Text style={styles.setupButtonText}>Sign in</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondaryButton}
+              disabled={!onOpenCreateAccount}
+              onPress={() => onOpenCreateAccount?.()}
+            >
+              <Text style={styles.secondaryButtonText}>Create account</Text>
+            </Pressable>
           </>
         )}
-        {authError ? <Text style={styles.previewError}>{authError}</Text> : null}
+        {authError && !signedInEmail ? (
+          <Text style={styles.previewError}>{authError}</Text>
+        ) : null}
       </View>
 
       <Text style={styles.title}>Translate to</Text>
@@ -284,7 +207,10 @@ export function SettingsScreen({
       <Text style={[styles.title, styles.sectionTitle]}>My voice</Text>
       <Text style={styles.subtitle}>
         Enroll once so your partner hears translations in your voice, not a
-        preset. Stored on this device until you remove it.
+        preset.
+        {signedInEmail
+          ? " Syncs to your account across devices."
+          : " Saved on this device until you create an account or remove it."}
       </Text>
 
       <View style={styles.card}>

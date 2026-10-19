@@ -13,22 +13,42 @@ import {
 } from "./src/session/devicePrefsStorage";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
+import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
+import {
+  AuthScreen,
+  type AuthScreenMode,
+} from "./src/screens/AuthScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { VoiceSetupScreen } from "./src/screens/VoiceSetupScreen";
+import { WelcomeScreen } from "./src/screens/WelcomeScreen";
+import type { ServerProfileResponse } from "./src/api/profile";
 
-type Screen = "home" | "session" | "settings" | "voiceSetup";
+type Screen =
+  | "welcome"
+  | "auth"
+  | "home"
+  | "session"
+  | "settings"
+  | "voiceSetup";
+
+type AuthReturnScreen = "welcome" | "home" | "settings";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>("welcome");
   const [roomCode, setRoomCode] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [myLang, setMyLang] = useState<LanguageCode>("en");
   const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
+  const [entryReady, setEntryReady] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthScreenMode>("sign-in");
+  const [authReturnScreen, setAuthReturnScreen] =
+    useState<AuthReturnScreen>("welcome");
 
   const auth = useAuth();
   const voiceProfile = useVoiceProfile();
@@ -42,22 +62,42 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    void loadDevicePrefs().then((prefs) => {
-      if (cancelled || !prefs) {
-        if (!cancelled) {
-          setDevicePrefsLoaded(true);
-        }
+    void (async () => {
+      const [prefs, guest] = await Promise.all([
+        loadDevicePrefs(),
+        loadGuestMode(),
+      ]);
+      if (cancelled) {
         return;
       }
-      setMyLang(prefs.hearLang);
-      setSpeakerGender(prefs.speakerGender);
+      if (prefs) {
+        setMyLang(prefs.hearLang);
+        setSpeakerGender(prefs.speakerGender);
+      }
+      setIsGuest(guest);
+      setEntryReady(true);
       setDevicePrefsLoaded(true);
-    });
+    })();
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!auth.loaded || !entryReady) {
+      return;
+    }
+    if (auth.session) {
+      setScreen((current) =>
+        current === "welcome" || current === "auth" ? "home" : current,
+      );
+      return;
+    }
+    if (isGuest) {
+      setScreen((current) => (current === "welcome" ? "home" : current));
+    }
+  }, [auth.loaded, auth.session, entryReady, isGuest]);
 
   useEffect(() => {
     if (!auth.loaded || !devicePrefsLoaded || !auth.session) {
@@ -178,6 +218,8 @@ export default function App() {
 
   const handleSignOut = useCallback(async () => {
     await auth.signOut();
+    await saveGuestMode(false);
+    setIsGuest(false);
     const prefs = await loadDevicePrefs();
     if (prefs) {
       setMyLang(prefs.hearLang);
@@ -186,7 +228,62 @@ export default function App() {
       setMyLang("en");
       setSpeakerGender("female");
     }
+    setScreen("welcome");
   }, [auth.signOut]);
+
+  const openAuth = useCallback(
+    (mode: AuthScreenMode, returnTo: AuthReturnScreen) => {
+      auth.clearError();
+      setAuthMode(mode);
+      setAuthReturnScreen(returnTo);
+      setScreen("auth");
+    },
+    [auth.clearError],
+  );
+
+  const handleGuestMode = useCallback(async () => {
+    await saveGuestMode(true);
+    setIsGuest(true);
+    setScreen("home");
+  }, []);
+
+  const finishAuthSuccess = useCallback(
+    async (
+      profile: ServerProfileResponse,
+      mode: AuthScreenMode,
+    ): Promise<void> => {
+      await saveGuestMode(false);
+      setIsGuest(false);
+      setMyLang(profile.profile.hearLang);
+      setSpeakerGender(profile.profile.speakerGender);
+      if (
+        !profile.profile.elevenlabsVoiceId &&
+        voiceProfile.elevenlabsVoiceId
+      ) {
+        try {
+          await auth.updateProfile({
+            elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
+          });
+        } catch (error) {
+          console.warn("Could not upload local voice on sign-in:", error);
+        }
+      }
+      setScreen(mode === "create-account" ? "settings" : "home");
+    },
+    [auth.updateProfile, voiceProfile.elevenlabsVoiceId],
+  );
+
+  const handleVerifyOtp = useCallback(
+    async (email: string, code: string) => {
+      const profile = await auth.signInWithOtp(email, code);
+      if (!profile) {
+        return null;
+      }
+      await finishAuthSuccess(profile, authMode);
+      return profile;
+    },
+    [auth.signInWithOtp, authMode, finishAuthSuccess],
+  );
 
   const handleIncomingTranslation = useCallback(
     (result: { audioBase64: string }) => {
@@ -283,6 +380,32 @@ export default function App() {
   }, [audio.releaseMicrophone, socket.disconnect]);
 
   const content = useMemo(() => {
+    if (screen === "welcome") {
+      return (
+        <WelcomeScreen
+          onSignIn={() => openAuth("sign-in", "welcome")}
+          onCreateAccount={() => openAuth("create-account", "welcome")}
+          onGuestMode={() => {
+            void handleGuestMode();
+          }}
+        />
+      );
+    }
+
+    if (screen === "auth") {
+      return (
+        <AuthScreen
+          mode={authMode}
+          authBusy={auth.busy}
+          authError={auth.error}
+          onBack={() => setScreen(authReturnScreen)}
+          onClearAuthError={auth.clearError}
+          onRequestOtp={auth.requestOtp}
+          onVerifyOtp={handleVerifyOtp}
+        />
+      );
+    }
+
     if (screen === "voiceSetup") {
       return (
         <VoiceSetupScreen
@@ -313,32 +436,11 @@ export default function App() {
           onMicrophoneChange={audio.setSelectedDeviceId}
           onRefreshMicrophones={audio.refreshInputDevices}
           signedInEmail={auth.session?.email ?? null}
-          authBusy={auth.busy}
           authError={auth.error}
-          onRequestOtp={auth.requestOtp}
-          onVerifyOtp={async (email, code) => {
-            const profile = await auth.signInWithOtp(email, code);
-            if (!profile) {
-              return null;
-            }
-            setMyLang(profile.profile.hearLang);
-            setSpeakerGender(profile.profile.speakerGender);
-            if (
-              !profile.profile.elevenlabsVoiceId &&
-              voiceProfile.elevenlabsVoiceId
-            ) {
-              try {
-                await auth.updateProfile({
-                  elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
-                });
-              } catch (error) {
-                console.warn("Could not upload local voice on sign-in:", error);
-              }
-            }
-            return profile;
-          }}
           onSignOut={handleSignOut}
           onClearAuthError={auth.clearError}
+          onOpenSignIn={() => openAuth("sign-in", "settings")}
+          onOpenCreateAccount={() => openAuth("create-account", "settings")}
         />
       );
     }
@@ -394,6 +496,8 @@ export default function App() {
           setScreen("session");
         }}
         onOpenSettings={() => setScreen("settings")}
+        showGuestBanner={isGuest && !auth.session}
+        onOpenSignIn={() => openAuth("sign-in", "home")}
       />
     );
   }, [
@@ -411,14 +515,19 @@ export default function App() {
     handleSignOut,
     handleSpeakerGenderChange,
     handleStartRecording,
+    handleGuestMode,
+    handleVerifyOtp,
     handleVoiceEnrolled,
+    auth.error,
+    auth.session,
+    authMode,
+    authReturnScreen,
     auth.busy,
     auth.clearError,
-    auth.error,
     auth.requestOtp,
-    auth.session?.email,
-    auth.signInWithOtp,
     homeResetKey,
+    isGuest,
+    openAuth,
     myLang,
     speakerGender,
     voiceProfile.elevenlabsVoiceId,
@@ -442,6 +551,14 @@ export default function App() {
     socket.status,
     socket.transcript,
   ]);
+
+  if (!auth.loaded || !entryReady) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

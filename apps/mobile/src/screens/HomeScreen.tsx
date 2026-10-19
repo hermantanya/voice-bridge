@@ -23,10 +23,12 @@ type HomeScreenProps = {
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
   voiceStatus: VoiceProfileStatus;
+  showGuestBanner?: boolean;
   onRoomCodeChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
   onOpenSettings: () => void;
+  onOpenSignIn?: () => void;
 };
 
 export function HomeScreen({
@@ -34,10 +36,12 @@ export function HomeScreen({
   myLang,
   speakerGender,
   voiceStatus,
+  showGuestBanner = false,
   onRoomCodeChange,
   onCreateRoom,
   onJoinRoom,
   onOpenSettings,
+  onOpenSignIn,
 }: HomeScreenProps) {
   const trimmedCode = roomCode.trim();
   const canJoin = canJoinRoom(roomCode);
@@ -84,6 +88,19 @@ export function HomeScreen({
               Real-time voice translation in English, Hebrew, or Russian
             </Text>
           </Pressable>
+
+          {showGuestBanner ? (
+            <Pressable
+              style={styles.guestBanner}
+              onPress={onOpenSignIn}
+              disabled={!onOpenSignIn}
+            >
+              <Text style={styles.guestBannerText}>
+                Guest mode — settings stay on this device only. Tap to sign in
+                or create an account.
+              </Text>
+            </Pressable>
+          ) : null}
 
           <Pressable style={styles.langBadge} onPress={handleOpenSettings}>
             <View style={styles.langBadgeMain}>
@@ -188,6 +205,20 @@ const styles = StyleSheet.create({
   },
   headerArea: {
     marginBottom: 16,
+  },
+  guestBanner: {
+    backgroundColor: "#422006",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#854d0e",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  guestBannerText: {
+    color: "#fde68a",
+    fontSize: 14,
+    lineHeight: 20,
   },
   title: {
     color: "#f8fafc",
