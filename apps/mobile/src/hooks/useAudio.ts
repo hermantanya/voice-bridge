@@ -42,7 +42,7 @@ type UseAudioOptions = {
   /** Web-only streaming uplink during hold (PCM16 chunks). */
   streamingUplinkEnabled?: boolean;
   onStreamingChunk?: (audioBase64: string, format: string) => void;
-  onStreamingRecordingStarted?: () => void;
+  onStreamingRecordingStarted?: () => void | Promise<void>;
 };
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -445,26 +445,34 @@ export function useAudio({
         pendingStreamRef.current = null;
         mediaRecorderRef.current = recorder;
 
-        if (
-          streamingUplinkEnabledRef.current &&
-          onStreamingChunkRef.current
-        ) {
-          streamingCaptureRef.current?.stop();
-          streamingCaptureRef.current = startStreamingPcmCapture(
-            stream,
-            (pcm16Base64) => {
-              onStreamingChunkRef.current?.(pcm16Base64, "pcm16");
-            },
-          );
-        }
-
         recorder.start(250);
 
         if (webStopRequestedRef.current) {
           recorder.stop();
         } else {
           setIsRecording(true);
-          onStreamingRecordingStartedRef.current?.();
+          void (async () => {
+            try {
+              await onStreamingRecordingStartedRef.current?.();
+            } catch (error) {
+              console.warn("Streaming PTT session start failed:", error);
+            }
+            if (
+              sessionId !== webSessionRef.current ||
+              webStopRequestedRef.current ||
+              !streamingUplinkEnabledRef.current ||
+              !onStreamingChunkRef.current
+            ) {
+              return;
+            }
+            streamingCaptureRef.current?.stop();
+            streamingCaptureRef.current = startStreamingPcmCapture(
+              stream,
+              (pcm16Base64) => {
+                onStreamingChunkRef.current?.(pcm16Base64, "pcm16");
+              },
+            );
+          })();
         }
       } finally {
         webStartInProgressRef.current = false;

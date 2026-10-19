@@ -35,9 +35,12 @@ import {
 } from "../streaming/realtimeTranscriptionSession.js";
 import {
   type ActiveStreamingTurn,
-  emitPartialTranscript,
+  createActiveStreamingTurn,
+  disposeActiveStreamingTurn,
   finalizeStreamingTurn,
   maybeTranslatePartial,
+  onStreamingPhraseCompleted,
+  onStreamingSourceUpdated,
   startStreamingTurn,
   type StreamingPttTurnContext,
 } from "../streaming/streamingPttTurn.js";
@@ -743,11 +746,21 @@ export function registerSocketHandlers(
       }
 
       const existing = activeStreamingTurns.get(socket.id);
-      existing?.session.close();
+      if (existing) {
+        disposeActiveStreamingTurn(existing);
+        existing.session.close();
+      }
 
       const turnId = `${socket.id}-${Date.now()}`;
       const sourceLangHint = socket.data.speakLangOverride as string | undefined;
-      let activeTurn: ActiveStreamingTurn;
+
+      const resolveListenerTargetLang = async () => {
+        const socketsInRoom = await io.in(code).fetchSockets();
+        const listener = socketsInRoom.find((s) => s.id !== socket.id);
+        return resolveTargetLanguage(listener?.data.hearLang as string | undefined);
+      };
+
+      let activeTurn!: ActiveStreamingTurn;
 
       const session = createRealtimeSession(
         apiKey,
@@ -757,17 +770,22 @@ export function registerSocketHandlers(
             if (!turn || turn.turnId !== turnId) {
               return;
             }
-            turn.accumulatedSource = accumulated;
-            const ctx = buildStreamingTurnContext(code, room, turnId, 0);
-            emitPartialTranscript(ctx, accumulated);
-            void (async () => {
-              const socketsInRoom = await io.in(code).fetchSockets();
-              const listener = socketsInRoom.find((s) => s.id !== socket.id);
-              const targetLang = resolveTargetLanguage(
-                listener?.data.hearLang as string | undefined,
-              );
-              await maybeTranslatePartial(turn, ctx, targetLang);
-            })();
+            onStreamingSourceUpdated(
+              turn,
+              buildStreamingTurnContext(code, room, turnId, 0),
+              accumulated,
+            );
+          },
+          onPhraseCompleted: (_phrase, accumulated) => {
+            const turn = activeStreamingTurns.get(socket.id);
+            if (!turn || turn.turnId !== turnId) {
+              return;
+            }
+            void onStreamingPhraseCompleted(
+              turn,
+              buildStreamingTurnContext(code, room, turnId, 0),
+              accumulated,
+            );
           },
           onError: (message) => {
             console.warn(`streaming ASR for ${socket.id}: ${message}`);
@@ -780,20 +798,28 @@ export function registerSocketHandlers(
         sourceLangHint,
       );
 
-      activeTurn = {
+      activeTurn = createActiveStreamingTurn({
         turnId,
         session,
-        accumulatedSource: "",
-        lastTranslatedSource: "",
-        lastTranslateAtMs: 0,
-        translateInFlight: false,
-        streamingFailed: false,
         sourceLangHint,
-      };
+        resolveListenerTargetLang,
+        runPartialTranslate: async () => {
+          const turn = activeStreamingTurns.get(socket.id);
+          if (!turn || turn.turnId !== turnId) {
+            return;
+          }
+          const targetLang = await turn.resolveListenerTargetLang();
+          await maybeTranslatePartial(
+            turn,
+            buildStreamingTurnContext(code, room, turnId, 0),
+            targetLang,
+          );
+        },
+      });
       activeStreamingTurns.set(socket.id, activeTurn);
 
       try {
-        await startStreamingTurn(session);
+        await startStreamingTurn(session, activeTurn);
         callback?.({ ok: true, turnId });
       } catch (error) {
         activeStreamingTurns.delete(socket.id);
@@ -827,7 +853,11 @@ export function registerSocketHandlers(
 
       const format = payload.format ?? "pcm16";
       if (format === "pcm16") {
-        turn.session.appendPcm16Base64(payload.audioBase64);
+        if (!turn.sessionReady) {
+          turn.pendingPcmChunks.push(payload.audioBase64);
+        } else {
+          turn.session.appendPcm16Base64(payload.audioBase64);
+        }
       }
     });
 
@@ -897,7 +927,10 @@ export function registerSocketHandlers(
     socket.on("disconnect", () => {
       const code = socket.data.roomCode as string | undefined;
       const streamingTurn = activeStreamingTurns.get(socket.id);
-      streamingTurn?.session.close();
+      if (streamingTurn) {
+        disposeActiveStreamingTurn(streamingTurn);
+        streamingTurn.session.close();
+      }
       activeStreamingTurns.delete(socket.id);
 
       if (code && rooms.has(code)) {

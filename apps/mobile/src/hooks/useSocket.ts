@@ -161,6 +161,10 @@ type UseSocketOptions = {
   streamingPtt?: boolean;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
+  onPartialTranslationAudio?: (payload: {
+    audioBase64?: string;
+    translatedText?: string;
+  }) => void;
 };
 
 export function useSocket({
@@ -172,9 +176,11 @@ export function useSocket({
   streamingPtt = false,
   enabled,
   onIncomingTranslation,
+  onPartialTranslationAudio,
 }: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const onIncomingRef = useRef(onIncomingTranslation);
+  const onPartialAudioRef = useRef(onPartialTranslationAudio);
   const myLangRef = useRef(myLang);
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
@@ -363,6 +369,7 @@ export function useSocket({
 
   useEffect(() => {
     onIncomingRef.current = onIncomingTranslation;
+  onPartialAudioRef.current = onPartialTranslationAudio;
   }, [onIncomingTranslation]);
 
   useEffect(() => {
@@ -761,6 +768,13 @@ export function useSocket({
     socket.on("partial_translation", (payload: PartialTranslationPayload) => {
       applyPartnerPartial(payload);
     });
+
+    socket.on(
+      "partial_translation_audio",
+      (payload: { audioBase64?: string; translatedText?: string }) => {
+        onPartialAudioRef.current?.(payload);
+      },
+    );
 
     const appendTranscriptIfNew = (
       direction: TranscriptEntry["direction"],

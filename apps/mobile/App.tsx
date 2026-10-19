@@ -71,6 +71,7 @@ export default function App() {
     async () => {},
   );
   const holdStartedAtRef = useRef<number | null>(null);
+  const audioPlayQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
     let cancelled = false;
@@ -338,14 +339,34 @@ export default function App() {
     [auth.signInWithOtp, authMode, finishAuthSuccess],
   );
 
+  const enqueueIncomingAudio = useCallback((audioBase64: string) => {
+    if (!audioBase64.trim()) {
+      return;
+    }
+    audioPlayQueueRef.current = audioPlayQueueRef.current
+      .catch(() => undefined)
+      .then(() => playAudioRef.current(audioBase64))
+      .catch((error) => {
+        console.warn("Could not play incoming translation:", error);
+      });
+  }, []);
+
   const handleIncomingTranslation = useCallback((result: TranslationResult) => {
     if (result.skippedTts || !result.audioBase64.trim()) {
       return;
     }
-    void playAudioRef.current(result.audioBase64).catch((error) => {
-      console.warn("Could not play incoming translation:", error);
-    });
-  }, []);
+    enqueueIncomingAudio(result.audioBase64);
+  }, [enqueueIncomingAudio]);
+
+  const handlePartialTranslationAudio = useCallback(
+    (payload: { audioBase64?: string }) => {
+      if (!payload.audioBase64?.trim()) {
+        return;
+      }
+      enqueueIncomingAudio(payload.audioBase64);
+    },
+    [enqueueIncomingAudio],
+  );
 
   const socket = useSocket({
     roomCode: activeRoomCode,
@@ -356,6 +377,7 @@ export default function App() {
     streamingPtt: streamingPttUplink,
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
+    onPartialTranslationAudio: handlePartialTranslationAudio,
   });
 
   const handleAudioReady = useCallback(
@@ -384,11 +406,14 @@ export default function App() {
     [socket.sendAudioChunk, socket.stopStreamingPtt, streamingPttUplink],
   );
 
-  const handleStreamingRecordingStarted = useCallback(() => {
+  const handleStreamingRecordingStarted = useCallback(async () => {
     if (!streamingPttUplink) {
       return;
     }
-    void socket.startStreamingPtt();
+    const ok = await socket.startStreamingPtt();
+    if (!ok) {
+      throw new Error("Could not start streaming session");
+    }
   }, [socket.startStreamingPtt, streamingPttUplink]);
 
   const handleStreamingChunk = useCallback(

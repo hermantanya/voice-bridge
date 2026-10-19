@@ -209,6 +209,13 @@ test("streaming PTT emits partials and finalizes without batch fallback", async 
   assert.equal(partial.isPartial, true);
   assert.match(partial.sourceText ?? "", /hello/i);
 
+  const partialTranslation = await waitForEvent<{ translatedText?: string; isPartial?: boolean }>(
+    listener,
+    "partial_translation",
+  );
+  assert.equal(partialTranslation.isPartial, true);
+  assert.ok((partialTranslation.translatedText ?? "").length > 0);
+
   speaker.emit("streaming_ptt_stop", {
     audioBase64: "",
     format: "webm",

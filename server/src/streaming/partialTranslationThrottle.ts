@@ -10,8 +10,8 @@ export function shouldTranslatePartial(input: {
   minIntervalMs?: number;
   minCharDelta?: number;
 }): boolean {
-  const minIntervalMs = input.minIntervalMs ?? 450;
-  const minCharDelta = input.minCharDelta ?? 8;
+  const minIntervalMs = input.minIntervalMs ?? 350;
+  const minCharDelta = input.minCharDelta ?? 4;
   const trimmed = input.sourceText.trim();
   if (trimmed.length < 3) {
     return false;

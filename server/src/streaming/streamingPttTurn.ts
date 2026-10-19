@@ -3,7 +3,9 @@ import type { Server, Socket } from "socket.io";
 import { runTranslationFromTranscript } from "../pipeline/fromTranscript.js";
 import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import { shouldTranslatePartial } from "./partialTranslationThrottle.js";
+import { createPartialTranslationScheduler } from "./partialTranslationScheduler.js";
 import type { RealtimeTranscriptionSession } from "./realtimeTranscriptionSession.js";
+import { synthesize } from "../pipeline/tts.js";
 
 export type StreamingPttTurnContext = {
   io: Server;
@@ -32,16 +34,28 @@ export type ActiveStreamingTurn = {
   session: RealtimeTranscriptionSession;
   accumulatedSource: string;
   lastTranslatedSource: string;
+  lastPartialTranslatedText: string;
+  lastSpokenTranslatedText: string;
   lastTranslateAtMs: number;
   translateInFlight: boolean;
   streamingFailed: boolean;
   sourceLangHint?: string;
+  pendingPcmChunks: string[];
+  sessionReady: boolean;
+  partialTranslateScheduler: ReturnType<typeof createPartialTranslationScheduler>;
+  resolveListenerTargetLang: () => Promise<string>;
 };
 
 export async function startStreamingTurn(
   session: RealtimeTranscriptionSession,
+  turn: ActiveStreamingTurn,
 ): Promise<void> {
   await session.ready;
+  turn.sessionReady = true;
+  for (const chunk of turn.pendingPcmChunks) {
+    session.appendPcm16Base64(chunk);
+  }
+  turn.pendingPcmChunks.length = 0;
 }
 
 export function emitPartialTranscript(
@@ -86,27 +100,93 @@ export function emitPartialTranslation(
   });
 }
 
-export async function maybeTranslatePartial(
+function emitPartialTranslationAudio(
+  ctx: StreamingPttTurnContext,
+  targetLang: string,
+  translatedText: string,
+  audioBase64: string,
+  audioFormat: string,
+): void {
+  const payload = {
+    roomCode: ctx.roomCode,
+    turnId: ctx.turnId,
+    fromParticipantId: ctx.socket.id,
+    translatedText,
+    targetLang,
+    audioBase64,
+    audioFormat,
+    isPartial: true,
+    routing: "push_to_talk" as const,
+  };
+  ctx.socket.to(ctx.roomCode).emit("partial_translation_audio", payload);
+  ctx.socket.emit("partial_translation_audio", {
+    ...payload,
+    role: "speaker" as const,
+  });
+}
+
+export function createActiveStreamingTurn(input: {
+  turnId: string;
+  session: RealtimeTranscriptionSession;
+  sourceLangHint?: string;
+  resolveListenerTargetLang: () => Promise<string>;
+  runPartialTranslate: () => Promise<void>;
+}): ActiveStreamingTurn {
+  return {
+    turnId: input.turnId,
+    session: input.session,
+    accumulatedSource: "",
+    lastTranslatedSource: "",
+    lastPartialTranslatedText: "",
+    lastSpokenTranslatedText: "",
+    lastTranslateAtMs: 0,
+    translateInFlight: false,
+    streamingFailed: false,
+    sourceLangHint: input.sourceLangHint,
+    pendingPcmChunks: [],
+    sessionReady: false,
+    resolveListenerTargetLang: input.resolveListenerTargetLang,
+    partialTranslateScheduler: createPartialTranslationScheduler({
+      debounceMs: 400,
+      run: input.runPartialTranslate,
+    }),
+  };
+}
+
+export function disposeActiveStreamingTurn(turn: ActiveStreamingTurn): void {
+  turn.partialTranslateScheduler.cancel();
+}
+
+async function runPartialTranslateOnce(
   turn: ActiveStreamingTurn,
   ctx: StreamingPttTurnContext,
   listenerTargetLang: string,
+  options: { force?: boolean } = {},
 ): Promise<void> {
   const nowMs = Date.now();
   if (
+    !options.force &&
     !shouldTranslatePartial({
       sourceText: turn.accumulatedSource,
       lastTranslatedSource: turn.lastTranslatedSource,
       lastTranslateAtMs: turn.lastTranslateAtMs,
       nowMs,
-    }) ||
-    turn.translateInFlight
+    })
   ) {
+    return;
+  }
+
+  if (turn.translateInFlight) {
     return;
   }
 
   turn.translateInFlight = true;
   turn.lastTranslateAtMs = nowMs;
   const sourceSnapshot = turn.accumulatedSource.trim();
+  if (sourceSnapshot.length < 1) {
+    turn.translateInFlight = false;
+    return;
+  }
 
   try {
     const { translate } = await import("../pipeline/translate.js");
@@ -119,16 +199,96 @@ export async function maybeTranslatePartial(
       undefined,
     );
     turn.lastTranslatedSource = sourceSnapshot;
+    turn.lastPartialTranslatedText = translatedText;
     emitPartialTranslation(
       ctx,
       sourceSnapshot,
       translatedText,
       listenerTargetLang,
     );
+    await maybeEarlyTtsForTranslation(turn, ctx, listenerTargetLang, translatedText);
   } catch (error) {
     console.warn("partial translation failed:", error);
   } finally {
     turn.translateInFlight = false;
+  }
+}
+
+export async function maybeTranslatePartial(
+  turn: ActiveStreamingTurn,
+  ctx: StreamingPttTurnContext,
+  listenerTargetLang: string,
+): Promise<void> {
+  await runPartialTranslateOnce(turn, ctx, listenerTargetLang);
+}
+
+export function onStreamingSourceUpdated(
+  turn: ActiveStreamingTurn,
+  ctx: StreamingPttTurnContext,
+  accumulated: string,
+): void {
+  turn.accumulatedSource = accumulated;
+  emitPartialTranscript(ctx, accumulated);
+  turn.partialTranslateScheduler.bump();
+}
+
+export async function onStreamingPhraseCompleted(
+  turn: ActiveStreamingTurn,
+  ctx: StreamingPttTurnContext,
+  accumulated: string,
+): Promise<void> {
+  turn.accumulatedSource = accumulated;
+  emitPartialTranscript(ctx, accumulated);
+  const listenerTargetLang = await turn.resolveListenerTargetLang();
+  await turn.partialTranslateScheduler.flush();
+  await runPartialTranslateOnce(turn, ctx, listenerTargetLang, { force: true });
+}
+
+async function maybeEarlyTtsForTranslation(
+  turn: ActiveStreamingTurn,
+  ctx: StreamingPttTurnContext,
+  listenerTargetLang: string,
+  fullTranslatedText: string,
+): Promise<void> {
+  const socketsInRoom = await ctx.io.in(ctx.roomCode).fetchSockets();
+  const listener = socketsInRoom.find((s) => s.id !== ctx.socket.id);
+  if (listener != null && listener.data.playTranslatedVoice === false) {
+    return;
+  }
+
+  const spokenPrefix = turn.lastSpokenTranslatedText;
+  let delta = fullTranslatedText;
+  if (spokenPrefix && fullTranslatedText.startsWith(spokenPrefix)) {
+    delta = fullTranslatedText.slice(spokenPrefix.length).trim();
+  } else if (spokenPrefix) {
+    delta = fullTranslatedText;
+  }
+
+  if (!delta.trim()) {
+    return;
+  }
+
+  const speakerVoiceId = ctx.socket.data.elevenlabsVoiceId as string | undefined;
+  try {
+    const audio = await synthesize(delta, {
+      voiceId: speakerVoiceId,
+      targetLang: listenerTargetLang,
+      preferFast: true,
+    });
+    if (audio.length === 0) {
+      turn.lastSpokenTranslatedText = fullTranslatedText;
+      return;
+    }
+    emitPartialTranslationAudio(
+      ctx,
+      listenerTargetLang,
+      delta,
+      audio.toString("base64"),
+      "mp3",
+    );
+    turn.lastSpokenTranslatedText = fullTranslatedText;
+  } catch (error) {
+    console.warn("partial TTS failed:", error);
   }
 }
 
@@ -141,6 +301,9 @@ export async function finalizeStreamingTurn(
     recordingDurationMs?: number;
   },
 ): Promise<void> {
+  turn.partialTranslateScheduler.cancel();
+  disposeActiveStreamingTurn(turn);
+
   let finalSourceText = "";
   try {
     finalSourceText = (await turn.session.finalize()).trim();
@@ -242,6 +405,8 @@ async function runFinalizeFromText(
     ctx.socket.emit("translation_sent_transcript", transcriptBase);
   };
 
+  const hadEarlyTts = turn.lastSpokenTranslatedText.length > 0;
+
   try {
     const result = await runTranslationFromTranscript({
       sourceText: finalSourceText,
@@ -253,14 +418,36 @@ async function runFinalizeFromText(
         | "male"
         | undefined,
       voiceId: speakerVoiceId,
-      skipTts: !listenerPlayVoice,
+      skipTts: !listenerPlayVoice || hadEarlyTts,
       onTranscriptReady: emitTranscriptEvents,
     });
 
+    let finalAudio = result.audio;
+    let skippedTts = result.skippedTts ?? false;
+
+    if (listenerPlayVoice && hadEarlyTts) {
+      const spoken = turn.lastSpokenTranslatedText;
+      let remainder = result.translatedText;
+      if (spoken && result.translatedText.startsWith(spoken)) {
+        remainder = result.translatedText.slice(spoken.length).trim();
+      }
+      if (!remainder) {
+        finalAudio = Buffer.alloc(0);
+        skippedTts = true;
+      } else {
+        finalAudio = await synthesize(remainder, {
+          voiceId: speakerVoiceId,
+          targetLang,
+          preferFast: true,
+        });
+        skippedTts = finalAudio.length === 0;
+      }
+    }
+
     const usedClonedVoice =
-      !result.skippedTts &&
+      !skippedTts &&
       Boolean(speakerVoiceId?.trim()) &&
-      result.audio.length > 0;
+      finalAudio.length > 0;
 
     const turnActiveMs = speechMs + result.latencyMs;
     ctx.closeActivePipeline();
@@ -275,11 +462,11 @@ async function runFinalizeFromText(
       targetLang: result.targetLang,
       sourceText: result.sourceText,
       translatedText: result.translatedText,
-      audioBase64: result.audio.toString("base64"),
+      audioBase64: finalAudio.toString("base64"),
       audioFormat: result.audioFormat,
       latencyMs: result.latencyMs,
       transcriptLatencyMs: result.transcriptLatencyMs,
-      skippedTts: result.skippedTts ?? false,
+      skippedTts,
       usedClonedVoice,
       turnActiveMs,
       routing: "push_to_talk" as const,

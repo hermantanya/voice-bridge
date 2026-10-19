@@ -178,6 +178,17 @@ export async function deleteElevenLabsVoice(voiceId: string): Promise<void> {
 }
 
 /** Per-language model routing — Hebrew is NOT on multilingual_v2 (29 langs). */
+
+/** Lower-latency models for streaming partial TTT (EN/RU). Hebrew stays on v3. */
+export function elevenLabsFastModelForLanguage(
+  languageCode: "en" | "he" | "ru",
+): ElevenLabsTtsModel {
+  if (languageCode === "he") {
+    return "eleven_v3";
+  }
+  return "eleven_turbo_v2_5";
+}
+
 export function elevenLabsModelForLanguage(
   languageCode: "en" | "he" | "ru",
 ): ElevenLabsTtsModel {

@@ -2,6 +2,7 @@ import { getOpenAIClient } from "./openai.js";
 import {
   ELEVENLABS_IVC_TTS_DEFAULTS,
   elevenLabsLanguageCodeForTts,
+  elevenLabsFastModelForLanguage,
   elevenLabsModelForLanguage,
   synthesizeElevenLabsSpeech,
 } from "../voices/elevenlabs.js";
@@ -20,6 +21,7 @@ export async function synthesize(
   options: {
     voiceId?: string;
     targetLang?: string;
+    preferFast?: boolean;
   } = {},
 ): Promise<Buffer> {
   if (process.env.VOICE_BRIDGE_TEST_TRANSLATE === "1") {
@@ -29,7 +31,9 @@ export async function synthesize(
   const voiceId = options.voiceId?.trim();
   if (voiceId) {
     const language = normalizeLanguage(options.targetLang);
-    const modelId = elevenLabsModelForLanguage(language);
+    const modelId = options.preferFast
+      ? elevenLabsFastModelForLanguage(language)
+      : elevenLabsModelForLanguage(language);
 
     return synthesizeElevenLabsSpeech({
       text,

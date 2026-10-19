@@ -8,6 +8,8 @@ const EV_DONE = "conversation.item.input_audio_transcription.completed";
 
 export type RealtimeTranscriptionHandlers = {
   onDelta?: (delta: string, accumulated: string) => void;
+  /** Fired when server VAD finalizes a spoken phrase while the hold is still active. */
+  onPhraseCompleted?: (phrase: string, accumulated: string) => void;
   onError?: (message: string) => void;
 };
 
@@ -36,10 +38,26 @@ function buildSessionUpdate(language?: string): object {
     type: "transcription_session.update",
     session: {
       input_audio_format: "pcm16",
-      turn_detection: null,
+      turn_detection: {
+        type: "server_vad",
+        threshold: 0.5,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 450,
+      },
       input_audio_transcription: transcription,
     },
   };
+}
+
+function appendPhrase(accumulated: string, phrase: string): string {
+  const trimmedPhrase = phrase.trim();
+  if (!trimmedPhrase) {
+    return accumulated;
+  }
+  if (!accumulated.trim()) {
+    return trimmedPhrase;
+  }
+  return `${accumulated.trim()} ${trimmedPhrase}`;
 }
 
 export function createOpenAIRealtimeTranscriptionSession(
@@ -109,11 +127,17 @@ export function createOpenAIRealtimeTranscriptionSession(
 
       if (event.type === EV_DONE) {
         const transcript = (event.transcript ?? accumulated).trim();
-        accumulated = transcript || accumulated;
         if (finalResolve) {
+          accumulated = transcript || accumulated;
           finalResolve(accumulated.trim());
           finalResolve = null;
           finalReject = null;
+          return;
+        }
+        if (transcript) {
+          accumulated = appendPhrase(accumulated, transcript);
+          handlers.onPhraseCompleted?.(transcript, accumulated);
+          handlers.onDelta?.(transcript, accumulated);
         }
       }
     });

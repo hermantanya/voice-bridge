@@ -630,15 +630,19 @@ export function SessionScreen({
           <Text style={styles.hint}>Partner is speaking.</Text>
         )}
 
-        {partnerPartial?.translatedText ? (
+        {partnerPartial?.translatedText || partnerPartial?.sourceText ? (
           <View style={styles.partialCard} accessibilityLiveRegion="polite">
             <Text style={styles.partialLabel}>Partner (live)</Text>
             {partnerPartial.sourceText ? (
               <Text style={styles.partialSource}>{partnerPartial.sourceText}</Text>
             ) : null}
-            <Text style={styles.partialTranslation}>
-              {partnerPartial.translatedText}
-            </Text>
+            {partnerPartial.translatedText ? (
+              <Text style={styles.partialTranslation}>
+                {partnerPartial.translatedText}
+              </Text>
+            ) : (
+              <Text style={styles.partialTranslationMuted}>Translating…</Text>
+            )}
           </View>
         ) : null}
 
