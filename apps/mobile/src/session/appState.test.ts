@@ -76,6 +76,21 @@ test("buildJoinRoomPayload sends translate-to, gender, and optional voice id", (
       elevenlabsVoiceId: "voice-123",
     },
   );
+
+  assert.deepEqual(
+    buildJoinRoomPayload({
+      roomCode: "ABCD",
+      myLang: "en",
+      speakerGender: "female",
+      playTranslatedVoice: false,
+    }),
+    {
+      roomCode: "ABCD",
+      hearLang: "en",
+      speakerGender: "female",
+      playTranslatedVoice: false,
+    },
+  );
 });
 
 test("shouldApplyTurnState ignores stale turn updates", () => {

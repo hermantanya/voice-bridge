@@ -27,10 +27,12 @@ type SettingsScreenProps = {
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
   conversationMode: ConversationMode;
+  playTranslatedVoice: boolean;
   onCommitProfileSettings?: (settings: {
     hearLang: LanguageCode;
     speakerGender: SpeakerGender;
     conversationMode: ConversationMode;
+    playTranslatedVoice: boolean;
   }) => void;
   voiceStatus: VoiceProfileStatus;
   elevenlabsVoiceId?: string | null;
@@ -55,6 +57,7 @@ export function SettingsScreen({
   myLang,
   speakerGender,
   conversationMode,
+  playTranslatedVoice,
   onCommitProfileSettings,
   voiceStatus,
   elevenlabsVoiceId,
@@ -81,6 +84,9 @@ export function SettingsScreen({
   const [draftGender, setDraftGender] = useState(speakerGender);
   const [draftConversationMode, setDraftConversationMode] =
     useState(conversationMode);
+  const [draftPlayTranslatedVoice, setDraftPlayTranslatedVoice] = useState(
+    playTranslatedVoice,
+  );
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
     selectedMicrophoneId,
   );
@@ -88,6 +94,7 @@ export function SettingsScreen({
     myLang,
     speakerGender,
     conversationMode,
+    playTranslatedVoice,
   });
 
   useEffect(() => {
@@ -99,8 +106,16 @@ export function SettingsScreen({
     setDraftConversationMode((draft) =>
       draft === prev.conversationMode ? conversationMode : draft,
     );
-    syncedProfileRef.current = { myLang, speakerGender, conversationMode };
-  }, [conversationMode, myLang, speakerGender]);
+    setDraftPlayTranslatedVoice((draft) =>
+      draft === prev.playTranslatedVoice ? playTranslatedVoice : draft,
+    );
+    syncedProfileRef.current = {
+      myLang,
+      speakerGender,
+      conversationMode,
+      playTranslatedVoice,
+    };
+  }, [conversationMode, myLang, playTranslatedVoice, speakerGender]);
 
   useEffect(() => {
     setPreviewText(null);
@@ -111,12 +126,14 @@ export function SettingsScreen({
     if (
       draftLang !== myLang ||
       draftGender !== speakerGender ||
-      draftConversationMode !== conversationMode
+      draftConversationMode !== conversationMode ||
+      draftPlayTranslatedVoice !== playTranslatedVoice
     ) {
       onCommitProfileSettings?.({
         hearLang: draftLang,
         speakerGender: draftGender,
         conversationMode: draftConversationMode,
+        playTranslatedVoice: draftPlayTranslatedVoice,
       });
     }
     if (
@@ -254,6 +271,50 @@ export function SettingsScreen({
             device.
           </Text>
         ) : null}
+      </View>
+
+      <Text style={[styles.title, styles.sectionTitle]}>Incoming translations</Text>
+      <Text style={styles.subtitle}>
+        Choose whether you hear translated speech from your partner or read the
+        transcript only. Transcript-only is faster when you do not need audio.
+      </Text>
+
+      <View style={styles.card}>
+        {[
+          {
+            value: true,
+            label: "Play translated voice",
+            description: "Hear cloned or preset voice when your partner speaks.",
+          },
+          {
+            value: false,
+            label: "Transcript only",
+            description: "Show text as soon as translation finishes; skip TTS.",
+          },
+        ].map((option) => {
+          const active = option.value === draftPlayTranslatedVoice;
+          return (
+            <Pressable
+              key={option.label}
+              style={[styles.option, active && styles.optionActive]}
+              onPress={() => setDraftPlayTranslatedVoice(option.value)}
+            >
+              <Text
+                style={[styles.optionText, active && styles.optionTextActive]}
+              >
+                {option.label}
+              </Text>
+              <Text
+                style={[
+                  styles.conversationOptionDescription,
+                  active && styles.conversationOptionDescriptionActive,
+                ]}
+              >
+                {option.description}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       <Text style={[styles.title, styles.sectionTitle]}>My gender</Text>

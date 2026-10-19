@@ -48,6 +48,7 @@ export default function App() {
   const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
   const [conversationMode, setConversationMode] =
     useState<ConversationMode>("push_to_talk");
+  const [playTranslatedVoice, setPlayTranslatedVoice] = useState(true);
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
   const [entryReady, setEntryReady] = useState(false);
@@ -80,6 +81,7 @@ export default function App() {
         setMyLang(prefs.hearLang);
         setSpeakerGender(prefs.speakerGender);
         setConversationMode(prefs.conversationMode);
+        setPlayTranslatedVoice(prefs.playTranslatedVoice);
       }
       setIsGuest(guest);
       setEntryReady(true);
@@ -207,10 +209,12 @@ export default function App() {
       hearLang: LanguageCode;
       speakerGender: SpeakerGender;
       conversationMode: ConversationMode;
+      playTranslatedVoice: boolean;
     }) => {
       setMyLang(settings.hearLang);
       setSpeakerGender(settings.speakerGender);
       setConversationMode(settings.conversationMode);
+      setPlayTranslatedVoice(settings.playTranslatedVoice);
       if (auth.session) {
         void auth
           .updateProfile({
@@ -225,6 +229,7 @@ export default function App() {
         hearLang: settings.hearLang,
         speakerGender: settings.speakerGender,
         conversationMode: settings.conversationMode,
+        playTranslatedVoice: settings.playTranslatedVoice,
       });
     },
     [auth.session, auth.updateProfile],
@@ -240,10 +245,12 @@ export default function App() {
       setMyLang(prefs.hearLang);
       setSpeakerGender(prefs.speakerGender);
       setConversationMode(prefs.conversationMode);
+      setPlayTranslatedVoice(prefs.playTranslatedVoice);
     } else {
       setMyLang("en");
       setSpeakerGender("female");
       setConversationMode("push_to_talk");
+      setPlayTranslatedVoice(true);
     }
     setScreen("welcome");
   }, [auth.signOut, voiceProfile.setElevenLabsVoiceId]);
@@ -333,6 +340,7 @@ export default function App() {
     myLang,
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
+    playTranslatedVoice,
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
   });
@@ -524,6 +532,7 @@ export default function App() {
           myLang={myLang}
           speakerGender={speakerGender}
           conversationMode={conversationMode}
+          playTranslatedVoice={playTranslatedVoice}
           onCommitProfileSettings={handleCommitProfileSettings}
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
@@ -614,6 +623,7 @@ export default function App() {
     handleEndSpeaking,
     handleLeaveSession,
     conversationMode,
+    playTranslatedVoice,
     handleCommitProfileSettings,
     handleRemoveVoice,
     handleSignOut,

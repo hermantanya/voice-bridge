@@ -11,6 +11,7 @@ import {
   isDeliverableRecording,
   resolveNativeUploadFormat,
 } from "../session/nativeRecordingFormat";
+import { releaseHandsFreeMicBeforePushToTalk } from "../session/nativeMicCoordinator";
 import { pushToTalkRecordingOptions } from "../session/pushToTalkRecordingOptions";
 import {
   nativeRecordingDurationMs,
@@ -94,6 +95,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   );
   const recordingStartedAtRef = useRef<number | null>(null);
   const onAudioReadyRef = useRef(onAudioReady);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   const [isRecording, setIsRecording] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(
@@ -283,6 +286,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   );
 
   const startRecording = useCallback(async () => {
+    if (!enabledRef.current) {
+      return;
+    }
+
     if (Platform.OS === "web") {
       recordingStartedAtRef.current = Date.now();
       if (webStartInProgressRef.current) {
@@ -429,6 +436,13 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     nativeStopRequestedRef.current = false;
     recordingStartedAtRef.current = Date.now();
+
+    await releaseHandsFreeMicBeforePushToTalk();
+    if (!enabledRef.current || nativeStopRequestedRef.current) {
+      recordingStartedAtRef.current = null;
+      return;
+    }
+
     const granted = await ensurePermissions();
     if (!granted) {
       recordingStartedAtRef.current = null;

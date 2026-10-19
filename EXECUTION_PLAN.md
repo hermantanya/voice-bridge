@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **standalone app v2** — self-mute on PTT + iOS WAV upload fixes shipped; **PTT latency** — early `translation_transcript` before TTS + Settings **Transcript only**; server `utterance` routing kept for future integrations; **client hands-free VAD removed from standalone app** — PTT-only product; **external beta** optional when domain ready)
 
 ---
 
@@ -129,6 +129,7 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 1. [x] **Self-mute + indicator** on PTT session
 2. [x] **iOS recording reliability** (PCM WAV path, truncated upload guards)
 3. [x] **Server utterance routing** (Option A) + integration tests — unused by standalone client
+4. [x] **PTT latency** — server emits `translation_transcript` / `translation_sent_transcript` right after STT+translate; `translation_result` follows with audio; optional dev `PIPELINE_TIMING_LOGS=1`; Settings **Play translated voice** vs **Transcript only** (`playTranslatedVoice: false` on `join_room` skips server TTS)
 
 ### Cancelled / deferred (standalone app)
 

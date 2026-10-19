@@ -37,6 +37,8 @@ type JoinRoomPayload = {
   speakerGender?: "female" | "male";
   elevenlabsVoiceId?: string;
   conversationMode?: ConversationMode;
+  /** When false, listener gets transcript only (no TTS). Default true. */
+  playTranslatedVoice?: boolean;
 };
 
 export type TranslationPipelineRunner = typeof runTranslationPipeline;
@@ -282,6 +284,38 @@ async function processSpeechPayload(
 
     const speakerVoiceId = socket.data.elevenlabsVoiceId as string | undefined;
 
+    const listenerPlayVoice =
+      listener?.data.playTranslatedVoice !== false;
+    const turnId = `${socket.id}-${Date.now()}`;
+
+    const emitTranscriptEvents = (progress: {
+      sourceLang: string;
+      targetLang: string;
+      sourceText: string;
+      translatedText: string;
+      transcriptLatencyMs: number;
+      skippedTts: boolean;
+    }) => {
+      const transcriptBase = {
+        roomCode: code,
+        turnId,
+        fromParticipantId: socket.id,
+        sourceLang: progress.sourceLang,
+        targetLang: progress.targetLang,
+        sourceText: progress.sourceText,
+        translatedText: progress.translatedText,
+        transcriptLatencyMs: progress.transcriptLatencyMs,
+        skippedTts: progress.skippedTts,
+        routing,
+      };
+
+      socket.to(code).emit("translation_transcript", transcriptBase);
+      socket.emit("translation_sent_transcript", {
+        ...transcriptBase,
+        myBillableMs: room.participantBillableMs.get(socket.id) ?? 0,
+      });
+    };
+
     const result: PipelineResult = await runPipeline({
       audio,
       targetLang,
@@ -290,6 +324,8 @@ async function processSpeechPayload(
       speakerGender,
       addresseeGender,
       voiceId: speakerVoiceId,
+      skipTts: !listenerPlayVoice,
+      onTranscriptReady: emitTranscriptEvents,
     });
 
     const usedClonedVoice =
@@ -304,6 +340,7 @@ async function processSpeechPayload(
 
     const translationBase = {
       roomCode: code,
+      turnId,
       fromParticipantId: socket.id,
       sourceLang: result.sourceLang,
       targetLang: result.targetLang,
@@ -312,6 +349,7 @@ async function processSpeechPayload(
       audioBase64: result.audio.toString("base64"),
       audioFormat: result.audioFormat,
       latencyMs: result.latencyMs,
+      transcriptLatencyMs: result.transcriptLatencyMs,
       skippedTts: result.skippedTts ?? false,
       usedClonedVoice,
       turnActiveMs,
@@ -369,6 +407,7 @@ export function registerSocketHandlers(
         speakerGender,
         elevenlabsVoiceId,
         conversationMode: conversationModeRaw,
+        playTranslatedVoice,
       } = payload;
 
       if (!roomCode?.trim()) {
@@ -423,6 +462,11 @@ export function registerSocketHandlers(
         delete socket.data.elevenlabsVoiceId;
       }
       socket.data.conversationMode = conversationMode;
+      if (playTranslatedVoice === false) {
+        socket.data.playTranslatedVoice = false;
+      } else {
+        delete socket.data.playTranslatedVoice;
+      }
 
       ensureSessionStarted(room);
 

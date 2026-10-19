@@ -79,6 +79,8 @@ function createMockPipeline(
       audio: Buffer.alloc(64, 0xab),
       audioFormat: "mp3",
       latencyMs: delayMs,
+      transcriptLatencyMs: delayMs,
+      timing: { sttMs: 1, translateMs: 1, ttsMs: Math.max(0, delayMs - 2) },
     };
   };
 

@@ -17,8 +17,21 @@ import {
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
 
+export type TranslationTranscriptPayload = {
+  roomCode: string;
+  turnId: string;
+  fromParticipantId: string;
+  sourceLang: string;
+  targetLang: string;
+  sourceText: string;
+  translatedText: string;
+  transcriptLatencyMs?: number;
+  skippedTts?: boolean;
+};
+
 export type TranslationResult = {
   roomCode: string;
+  turnId?: string;
   fromParticipantId: string;
   sourceLang: string;
   targetLang: string;
@@ -27,6 +40,7 @@ export type TranslationResult = {
   audioBase64: string;
   audioFormat: string;
   latencyMs: number;
+  transcriptLatencyMs?: number;
   usedClonedVoice?: boolean;
   skippedTts?: boolean;
   turnActiveMs?: number;
@@ -46,6 +60,7 @@ export type UsageSnapshot = {
 
 export type TranscriptEntry = {
   id: string;
+  turnId?: string;
   direction: "sent" | "received";
   sourceText: string;
   translatedText: string;
@@ -53,17 +68,29 @@ export type TranscriptEntry = {
   latencyMs: number;
 };
 
+function transcriptKey(
+  direction: TranscriptEntry["direction"],
+  turnId: string,
+): string {
+  return `${direction}:${turnId}`;
+}
+
 function createTranscriptEntry(
   direction: TranscriptEntry["direction"],
-  payload: TranslationResult,
+  payload: TranslationResult | TranslationTranscriptPayload,
+  latencyMs: number,
 ): TranscriptEntry {
+  const turnId = payload.turnId;
   return {
-    id: `${direction}-${payload.fromParticipantId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id:
+      turnId ??
+      `${direction}-${payload.fromParticipantId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    turnId,
     direction,
     sourceText: payload.sourceText,
     translatedText: payload.translatedText,
     receivedAt: Date.now(),
-    latencyMs: payload.latencyMs,
+    latencyMs,
   };
 }
 
@@ -120,6 +147,7 @@ type UseSocketOptions = {
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
   elevenlabsVoiceId?: string | null;
+  playTranslatedVoice?: boolean;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
 };
@@ -129,6 +157,7 @@ export function useSocket({
   myLang,
   speakerGender,
   elevenlabsVoiceId = null,
+  playTranslatedVoice = true,
   enabled,
   onIncomingTranslation,
 }: UseSocketOptions) {
@@ -137,6 +166,8 @@ export function useSocket({
   const myLangRef = useRef(myLang);
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
+  const playTranslatedVoiceRef = useRef(playTranslatedVoice);
+  const transcriptTurnKeysRef = useRef(new Set<string>());
   const connectedRef = useRef(false);
 
   const emitJoinRoom = useCallback(() => {
@@ -152,6 +183,7 @@ export function useSocket({
         myLang: myLangRef.current,
         speakerGender: speakerGenderRef.current,
         elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
+        playTranslatedVoice: playTranslatedVoiceRef.current,
       }),
     );
   }, []);
@@ -328,6 +360,10 @@ export function useSocket({
   }, [elevenlabsVoiceId]);
 
   useEffect(() => {
+    playTranslatedVoiceRef.current = playTranslatedVoice;
+  }, [playTranslatedVoice]);
+
+  useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
@@ -366,6 +402,7 @@ export function useSocket({
     setParticipants(0);
     setPartnerLang(null);
     setTranscript([]);
+    transcriptTurnKeysRef.current.clear();
     setTotalActiveConversationMs(0);
     setMyBillableMs(0);
     setPartnerBillableMs(0);
@@ -591,22 +628,86 @@ export function useSocket({
       },
     );
 
-    socket.on("translation_result", (payload: TranslationResult) => {
-      setLastReceived(payload);
+    const appendTranscriptIfNew = (
+      direction: TranscriptEntry["direction"],
+      payload: TranslationResult | TranslationTranscriptPayload,
+      latencyMs: number,
+    ) => {
+      if (payload.turnId) {
+        const key = transcriptKey(direction, payload.turnId);
+        if (transcriptTurnKeysRef.current.has(key)) {
+          return;
+        }
+        transcriptTurnKeysRef.current.add(key);
+      }
+
       setTranscript((current) => [
         ...current,
-        createTranscriptEntry("received", payload),
+        createTranscriptEntry(direction, payload, latencyMs),
       ]);
+    };
+
+    const refreshTranscriptLatency = (
+      direction: TranscriptEntry["direction"],
+      turnId: string,
+      latencyMs: number,
+    ) => {
+      setTranscript((current) =>
+        current.map((entry) =>
+          entry.turnId === turnId && entry.direction === direction
+            ? { ...entry, latencyMs }
+            : entry,
+        ),
+      );
+    };
+
+    socket.on("translation_transcript", (payload: TranslationTranscriptPayload) => {
+      appendTranscriptIfNew(
+        "received",
+        payload,
+        payload.transcriptLatencyMs ?? 0,
+      );
+    });
+
+    socket.on(
+      "translation_sent_transcript",
+      (payload: TranslationTranscriptPayload) => {
+        appendTranscriptIfNew(
+          "sent",
+          payload,
+          payload.transcriptLatencyMs ?? 0,
+        );
+      },
+    );
+
+    socket.on("translation_result", (payload: TranslationResult) => {
+      setLastReceived(payload);
+      if (payload.turnId) {
+        const key = transcriptKey("received", payload.turnId);
+        if (transcriptTurnKeysRef.current.has(key)) {
+          refreshTranscriptLatency("received", payload.turnId, payload.latencyMs);
+        } else {
+          appendTranscriptIfNew("received", payload, payload.latencyMs);
+        }
+      } else {
+        appendTranscriptIfNew("received", payload, payload.latencyMs);
+      }
       applyTurnUsage(payload, "received");
       onIncomingRef.current?.(payload);
     });
 
     socket.on("translation_sent", (payload: TranslationResult) => {
       setLastSent(payload);
-      setTranscript((current) => [
-        ...current,
-        createTranscriptEntry("sent", payload),
-      ]);
+      if (payload.turnId) {
+        const key = transcriptKey("sent", payload.turnId);
+        if (transcriptTurnKeysRef.current.has(key)) {
+          refreshTranscriptLatency("sent", payload.turnId, payload.latencyMs);
+        } else {
+          appendTranscriptIfNew("sent", payload, payload.latencyMs);
+        }
+      } else {
+        appendTranscriptIfNew("sent", payload, payload.latencyMs);
+      }
       applyTurnUsage(payload, "sent");
     });
 
@@ -655,7 +756,7 @@ export function useSocket({
 
   useEffect(() => {
     emitJoinRoom();
-  }, [emitJoinRoom, elevenlabsVoiceId, myLang, speakerGender]);
+  }, [emitJoinRoom, elevenlabsVoiceId, myLang, playTranslatedVoice, speakerGender]);
 
   return {
     status,

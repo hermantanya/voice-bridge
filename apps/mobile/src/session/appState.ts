@@ -45,6 +45,7 @@ export function buildJoinRoomPayload(input: {
   speakerGender: SpeakerGender;
   speakLangOverride?: LanguageCode;
   elevenlabsVoiceId?: string | null;
+  playTranslatedVoice?: boolean;
 }) {
   const payload: {
     roomCode: string;
@@ -52,11 +53,16 @@ export function buildJoinRoomPayload(input: {
     speakerGender: SpeakerGender;
     speakLangOverride?: LanguageCode;
     elevenlabsVoiceId?: string;
+    playTranslatedVoice?: boolean;
   } = {
     roomCode: input.roomCode,
     hearLang: input.myLang,
     speakerGender: input.speakerGender,
   };
+
+  if (input.playTranslatedVoice === false) {
+    payload.playTranslatedVoice = false;
+  }
 
   if (input.speakLangOverride) {
     payload.speakLangOverride = input.speakLangOverride;

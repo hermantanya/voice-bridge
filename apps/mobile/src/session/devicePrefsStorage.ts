@@ -9,11 +9,13 @@ import type {
 const HEAR_LANG_KEY = "voice-bridge:hearLang";
 const SPEAKER_GENDER_KEY = "voice-bridge:speakerGender";
 const CONVERSATION_MODE_KEY = "voice-bridge:conversationMode";
+const PLAY_TRANSLATED_VOICE_KEY = "voice-bridge:playTranslatedVoice";
 
 export type DevicePrefs = {
   hearLang: LanguageCode;
   speakerGender: SpeakerGender;
   conversationMode: ConversationMode;
+  playTranslatedVoice: boolean;
 };
 
 const VALID_LANGS = new Set<LanguageCode>(["en", "he", "ru"]);
@@ -24,13 +26,15 @@ const VALID_CONVERSATION_MODES = new Set<ConversationMode>([
 ]);
 
 export async function loadDevicePrefs(): Promise<DevicePrefs | null> {
-  const [hearLangRaw, genderRaw, conversationModeRaw] = await Promise.all([
-    AsyncStorage.getItem(HEAR_LANG_KEY),
-    AsyncStorage.getItem(SPEAKER_GENDER_KEY),
-    AsyncStorage.getItem(CONVERSATION_MODE_KEY),
-  ]);
+  const [hearLangRaw, genderRaw, conversationModeRaw, playVoiceRaw] =
+    await Promise.all([
+      AsyncStorage.getItem(HEAR_LANG_KEY),
+      AsyncStorage.getItem(SPEAKER_GENDER_KEY),
+      AsyncStorage.getItem(CONVERSATION_MODE_KEY),
+      AsyncStorage.getItem(PLAY_TRANSLATED_VOICE_KEY),
+    ]);
 
-  if (!hearLangRaw && !genderRaw && !conversationModeRaw) {
+  if (!hearLangRaw && !genderRaw && !conversationModeRaw && !playVoiceRaw) {
     return null;
   }
 
@@ -47,8 +51,9 @@ export async function loadDevicePrefs(): Promise<DevicePrefs | null> {
     : "push_to_talk";
   const conversationMode =
     storedMode === "hands_free" ? "push_to_talk" : storedMode;
+  const playTranslatedVoice = playVoiceRaw !== "false";
 
-  return { hearLang, speakerGender, conversationMode };
+  return { hearLang, speakerGender, conversationMode, playTranslatedVoice };
 }
 
 export async function saveDevicePrefs(prefs: DevicePrefs): Promise<void> {
@@ -56,6 +61,10 @@ export async function saveDevicePrefs(prefs: DevicePrefs): Promise<void> {
     AsyncStorage.setItem(HEAR_LANG_KEY, prefs.hearLang),
     AsyncStorage.setItem(SPEAKER_GENDER_KEY, prefs.speakerGender),
     AsyncStorage.setItem(CONVERSATION_MODE_KEY, prefs.conversationMode),
+    AsyncStorage.setItem(
+      PLAY_TRANSLATED_VOICE_KEY,
+      prefs.playTranslatedVoice ? "true" : "false",
+    ),
   ]);
 }
 
@@ -64,5 +73,6 @@ export async function clearDevicePrefs(): Promise<void> {
     AsyncStorage.removeItem(HEAR_LANG_KEY),
     AsyncStorage.removeItem(SPEAKER_GENDER_KEY),
     AsyncStorage.removeItem(CONVERSATION_MODE_KEY),
+    AsyncStorage.removeItem(PLAY_TRANSLATED_VOICE_KEY),
   ]);
 }
