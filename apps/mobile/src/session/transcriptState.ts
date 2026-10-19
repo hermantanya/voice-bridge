@@ -64,7 +64,16 @@ export function appendTranscriptIfNew(
   if (payload.turnId) {
     const key = transcriptKey(direction, payload.turnId);
     if (seenTurnKeys.has(key)) {
-      return { entries, seenTurnKeys };
+      return {
+        entries: updateTranscriptEntry(
+          entries,
+          direction,
+          payload.turnId,
+          payload,
+          latencyMs,
+        ),
+        seenTurnKeys,
+      };
     }
     seenTurnKeys.add(key);
   }
@@ -91,6 +100,25 @@ export function refreshTranscriptLatency(
   );
 }
 
+export function updateTranscriptEntry(
+  entries: TranscriptEntry[],
+  direction: TranscriptDirection,
+  turnId: string,
+  payload: TranscriptPayload,
+  latencyMs: number,
+): TranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.turnId === turnId && entry.direction === direction
+      ? {
+          ...entry,
+          sourceText: payload.sourceText,
+          translatedText: payload.translatedText,
+          latencyMs,
+        }
+      : entry,
+  );
+}
+
 export function applyTranslationResultToTranscript(
   entries: TranscriptEntry[],
   seenTurnKeys: Set<string>,
@@ -105,10 +133,11 @@ export function applyTranslationResultToTranscript(
     const key = transcriptKey("received", payload.turnId);
     if (seenTurnKeys.has(key)) {
       return {
-        entries: refreshTranscriptLatency(
+        entries: updateTranscriptEntry(
           entries,
           "received",
           payload.turnId,
+          payload,
           latencyMs,
         ),
         seenTurnKeys,
@@ -139,10 +168,11 @@ export function applyTranslationSentToTranscript(
     const key = transcriptKey("sent", payload.turnId);
     if (seenTurnKeys.has(key)) {
       return {
-        entries: refreshTranscriptLatency(
+        entries: updateTranscriptEntry(
           entries,
           "sent",
           payload.turnId,
+          payload,
           latencyMs,
         ),
         seenTurnKeys,

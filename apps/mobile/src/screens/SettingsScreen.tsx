@@ -29,12 +29,18 @@ type SettingsScreenProps = {
   speakerGender: SpeakerGender;
   conversationMode: ConversationMode;
   playTranslatedVoice: boolean;
+  sameRoomTextFirst: boolean;
+  sameRoomPlayFinalVoice: boolean;
+  usingHeadphones: boolean;
   streamingPttDev?: boolean;
   onCommitProfileSettings?: (settings: {
     hearLang: LanguageCode;
     speakerGender: SpeakerGender;
     conversationMode: ConversationMode;
     playTranslatedVoice: boolean;
+    sameRoomTextFirst: boolean;
+    sameRoomPlayFinalVoice: boolean;
+    usingHeadphones: boolean;
     streamingPttDev?: boolean;
   }) => void;
   voiceStatus: VoiceProfileStatus;
@@ -62,6 +68,9 @@ export function SettingsScreen({
   speakerGender,
   conversationMode,
   playTranslatedVoice,
+  sameRoomTextFirst,
+  sameRoomPlayFinalVoice,
+  usingHeadphones,
   streamingPttDev = false,
   onCommitProfileSettings,
   voiceStatus,
@@ -93,6 +102,12 @@ export function SettingsScreen({
   const [draftPlayTranslatedVoice, setDraftPlayTranslatedVoice] = useState(
     playTranslatedVoice,
   );
+  const [draftSameRoomTextFirst, setDraftSameRoomTextFirst] =
+    useState(sameRoomTextFirst);
+  const [draftSameRoomPlayFinalVoice, setDraftSameRoomPlayFinalVoice] =
+    useState(sameRoomPlayFinalVoice);
+  const [draftUsingHeadphones, setDraftUsingHeadphones] =
+    useState(usingHeadphones);
   const [draftStreamingPttDev, setDraftStreamingPttDev] = useState(streamingPttDev);
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
     selectedMicrophoneId,
@@ -102,6 +117,9 @@ export function SettingsScreen({
     speakerGender,
     conversationMode,
     playTranslatedVoice,
+    sameRoomTextFirst,
+    sameRoomPlayFinalVoice,
+    usingHeadphones,
     streamingPttDev,
   });
 
@@ -117,6 +135,17 @@ export function SettingsScreen({
     setDraftPlayTranslatedVoice((draft) =>
       draft === prev.playTranslatedVoice ? playTranslatedVoice : draft,
     );
+    setDraftSameRoomTextFirst((draft) =>
+      draft === prev.sameRoomTextFirst ? sameRoomTextFirst : draft,
+    );
+    setDraftSameRoomPlayFinalVoice((draft) =>
+      draft === prev.sameRoomPlayFinalVoice
+        ? sameRoomPlayFinalVoice
+        : draft,
+    );
+    setDraftUsingHeadphones((draft) =>
+      draft === prev.usingHeadphones ? usingHeadphones : draft,
+    );
     setDraftStreamingPttDev((draft) =>
       draft === prev.streamingPttDev ? streamingPttDev : draft,
     );
@@ -125,12 +154,18 @@ export function SettingsScreen({
       speakerGender,
       conversationMode,
       playTranslatedVoice,
+      sameRoomTextFirst,
+      sameRoomPlayFinalVoice,
+      usingHeadphones,
       streamingPttDev,
     };
   }, [
     conversationMode,
     myLang,
     playTranslatedVoice,
+    sameRoomTextFirst,
+    sameRoomPlayFinalVoice,
+    usingHeadphones,
     speakerGender,
     streamingPttDev,
   ]);
@@ -146,6 +181,9 @@ export function SettingsScreen({
       draftGender !== speakerGender ||
       draftConversationMode !== conversationMode ||
       draftPlayTranslatedVoice !== playTranslatedVoice ||
+      draftSameRoomTextFirst !== sameRoomTextFirst ||
+      draftSameRoomPlayFinalVoice !== sameRoomPlayFinalVoice ||
+      draftUsingHeadphones !== usingHeadphones ||
       draftStreamingPttDev !== streamingPttDev
     ) {
       onCommitProfileSettings?.({
@@ -153,6 +191,9 @@ export function SettingsScreen({
         speakerGender: draftGender,
         conversationMode: draftConversationMode,
         playTranslatedVoice: draftPlayTranslatedVoice,
+        sameRoomTextFirst: draftSameRoomTextFirst,
+        sameRoomPlayFinalVoice: draftSameRoomPlayFinalVoice,
+        usingHeadphones: draftUsingHeadphones,
         streamingPttDev: draftStreamingPttDev,
       });
     }
@@ -384,6 +425,116 @@ export function SettingsScreen({
           );
         })}
       </View>
+
+
+      <Text style={[styles.title, styles.sectionTitle]}>Same room (text first)</Text>
+      <Text style={styles.subtitle}>
+        When you are with your partner in person, show live translation text
+        while they speak. Translated voice stays quiet so you are not talking
+        over each other. Turn this off if you are on a call or in separate
+        rooms.
+      </Text>
+
+      <View style={styles.card}>
+        {[
+          {
+            value: true,
+            label: "Same room — text first",
+            description:
+              "Live transcript while they hold push-to-talk; no overlapping partial voice.",
+          },
+          {
+            value: false,
+            label: "Remote / separate audio",
+            description:
+              "Use full translated voice (partials and final) like a phone call.",
+          },
+        ].map((option) => {
+          const active = option.value === draftSameRoomTextFirst;
+          return (
+            <Pressable
+              key={option.label}
+              style={[styles.option, active && styles.optionActive]}
+              onPress={() => setDraftSameRoomTextFirst(option.value)}
+            >
+              <Text
+                style={[styles.optionText, active && styles.optionTextActive]}
+              >
+                {option.label}
+              </Text>
+              <Text
+                style={[
+                  styles.conversationOptionDescription,
+                  active && styles.conversationOptionDescriptionActive,
+                ]}
+              >
+                {option.description}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        {draftSameRoomTextFirst && draftPlayTranslatedVoice ? (
+          <>
+            <Pressable
+              style={[
+                styles.option,
+                draftUsingHeadphones && styles.optionActive,
+              ]}
+              onPress={() => setDraftUsingHeadphones((current) => !current)}
+            >
+              <Text
+                style={[
+                  styles.optionText,
+                  draftUsingHeadphones && styles.optionTextActive,
+                ]}
+              >
+                Using headphones
+              </Text>
+              <Text
+                style={[
+                  styles.conversationOptionDescription,
+                  draftUsingHeadphones &&
+                    styles.conversationOptionDescriptionActive,
+                ]}
+              >
+                Hear partial translated voice in your headphones without
+                playing it aloud in the room.
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.option,
+                draftSameRoomPlayFinalVoice && styles.optionActive,
+              ]}
+              onPress={() =>
+                setDraftSameRoomPlayFinalVoice((current) => !current)
+              }
+            >
+              <Text
+                style={[
+                  styles.optionText,
+                  draftSameRoomPlayFinalVoice && styles.optionTextActive,
+                ]}
+              >
+                Play final translated voice
+              </Text>
+              <Text
+                style={[
+                  styles.conversationOptionDescription,
+                  draftSameRoomPlayFinalVoice &&
+                    styles.conversationOptionDescriptionActive,
+                ]}
+              >
+                After they release push-to-talk, play the full translation once
+                (still no partial voice unless headphones are on).
+              </Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+
 
       <Text style={[styles.title, styles.sectionTitle]}>My gender</Text>
       <Text style={styles.subtitle}>

@@ -173,10 +173,38 @@ const checks = [
     name: "App playback guards speaker vs listener TTS",
     file: "App.tsx",
     required: [
-      "shouldPlayTranslationAudio",
+      "shouldAutoPlayTranslationAudio",
       "myParticipantIdRef",
       'kind: "translation_result"',
       'kind: "partial_translation_audio"',
+    ],
+  },
+  {
+    name: "same-room playback policy unit tests",
+    file: "src/session/translationPlayback.test.ts",
+    required: [
+      "shouldAutoPlayTranslationAudio",
+      "usingHeadphones",
+      "sameRoomTextFirst",
+    ],
+  },
+  {
+    name: "settings same-room and headphones copy",
+    file: "src/screens/SettingsScreen.tsx",
+    required: [
+      "Same room (text first)",
+      "Using headphones",
+      "sameRoomTextFirst",
+      "usingHeadphones",
+    ],
+  },
+  {
+    name: "App uses same-room playback prefs",
+    file: "App.tsx",
+    required: [
+      "shouldAutoPlayTranslationAudio",
+      "sameRoomTextFirst",
+      "usingHeadphones",
     ],
   },
   {

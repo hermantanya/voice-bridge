@@ -46,6 +46,10 @@ export function buildJoinRoomPayload(input: {
   speakLangOverride?: LanguageCode;
   elevenlabsVoiceId?: string | null;
   playTranslatedVoice?: boolean;
+  sameRoomTextFirst?: boolean;
+  sameRoomMode?: boolean;
+  sameRoomPlayFinalVoice?: boolean;
+  usingHeadphones?: boolean;
   streamingPtt?: boolean;
 }) {
   const payload: {
@@ -55,6 +59,10 @@ export function buildJoinRoomPayload(input: {
     speakLangOverride?: LanguageCode;
     elevenlabsVoiceId?: string;
     playTranslatedVoice?: boolean;
+    sameRoomTextFirst?: boolean;
+    sameRoomMode?: boolean;
+    sameRoomPlayFinalVoice?: boolean;
+    usingHeadphones?: boolean;
     streamingPtt?: boolean;
   } = {
     roomCode: input.roomCode,
@@ -64,6 +72,22 @@ export function buildJoinRoomPayload(input: {
 
   if (input.playTranslatedVoice === false) {
     payload.playTranslatedVoice = false;
+  }
+
+  if (input.sameRoomTextFirst === true) {
+    payload.sameRoomTextFirst = true;
+    payload.sameRoomMode = true;
+  } else if (input.sameRoomTextFirst === false) {
+    payload.sameRoomTextFirst = false;
+    payload.sameRoomMode = false;
+  }
+
+  if (input.sameRoomPlayFinalVoice === true) {
+    payload.sameRoomPlayFinalVoice = true;
+  }
+
+  if (input.usingHeadphones === true) {
+    payload.usingHeadphones = true;
   }
 
   if (input.speakLangOverride) {

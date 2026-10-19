@@ -141,6 +141,9 @@ type UseSocketOptions = {
   speakerGender: SpeakerGender;
   elevenlabsVoiceId?: string | null;
   playTranslatedVoice?: boolean;
+  sameRoomTextFirst?: boolean;
+  sameRoomPlayFinalVoice?: boolean;
+  usingHeadphones?: boolean;
   streamingPtt?: boolean;
   enabled: boolean;
   onIncomingTranslation?: (result: TranslationResult) => void;
@@ -159,6 +162,9 @@ export function useSocket({
   speakerGender,
   elevenlabsVoiceId = null,
   playTranslatedVoice = true,
+  sameRoomTextFirst = true,
+  sameRoomPlayFinalVoice = false,
+  usingHeadphones = false,
   streamingPtt = false,
   enabled,
   onIncomingTranslation,
@@ -171,6 +177,9 @@ export function useSocket({
   const speakerGenderRef = useRef(speakerGender);
   const elevenlabsVoiceIdRef = useRef(elevenlabsVoiceId);
   const playTranslatedVoiceRef = useRef(playTranslatedVoice);
+  const sameRoomTextFirstRef = useRef(sameRoomTextFirst);
+  const sameRoomPlayFinalVoiceRef = useRef(sameRoomPlayFinalVoice);
+  const usingHeadphonesRef = useRef(usingHeadphones);
   const streamingPttRef = useRef(streamingPtt);
   const streamingSessionActiveRef = useRef(false);
   const streamingChunkCountRef = useRef(0);
@@ -194,6 +203,11 @@ export function useSocket({
         speakerGender: speakerGenderRef.current,
         elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
         playTranslatedVoice: playTranslatedVoiceRef.current,
+        sameRoomTextFirst: sameRoomTextFirstRef.current,
+        sameRoomPlayFinalVoice: sameRoomPlayFinalVoiceRef.current
+          ? true
+          : undefined,
+        usingHeadphones: usingHeadphonesRef.current ? true : undefined,
         streamingPtt: requestStreaming ? true : undefined,
       }),
     );
@@ -384,6 +398,18 @@ export function useSocket({
   useEffect(() => {
     playTranslatedVoiceRef.current = playTranslatedVoice;
   }, [playTranslatedVoice]);
+
+  useEffect(() => {
+    sameRoomTextFirstRef.current = sameRoomTextFirst;
+  }, [sameRoomTextFirst]);
+
+  useEffect(() => {
+    sameRoomPlayFinalVoiceRef.current = sameRoomPlayFinalVoice;
+  }, [sameRoomPlayFinalVoice]);
+
+  useEffect(() => {
+    usingHeadphonesRef.current = usingHeadphones;
+  }, [usingHeadphones]);
 
   useEffect(() => {
     streamingPttRef.current = streamingPtt;

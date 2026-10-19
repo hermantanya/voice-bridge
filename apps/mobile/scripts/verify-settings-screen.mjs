@@ -19,6 +19,8 @@ const required = [
   ["showMicrophoneSettings", "microphone settings section"],
   ["Conversation mode", "conversation mode settings section"],
   ["Coming soon", "hands-free coming soon label"],
+  ["Same room (text first)", "same-room settings section"],
+  ["Using headphones", "headphones sub-option"],
   ["My gender", "gender settings section"],
   ["My voice", "voice profile section"],
   ["Set up my voice", "voice setup entry point"],

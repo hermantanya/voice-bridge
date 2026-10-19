@@ -18,7 +18,10 @@ import {
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp, shouldReleaseTurnAfterLocalStop } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { isStreamingPttUplinkAvailable } from "./src/session/streamingPtt";
-import { shouldPlayTranslationAudio } from "./src/session/translationPlayback";
+import {
+  shouldAutoPlayTranslationAudio,
+  type TranslationPlaybackPrefs,
+} from "./src/session/translationPlayback";
 import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
 import {
@@ -51,6 +54,9 @@ export default function App() {
   const [conversationMode, setConversationMode] =
     useState<ConversationMode>("push_to_talk");
   const [playTranslatedVoice, setPlayTranslatedVoice] = useState(true);
+  const [sameRoomTextFirst, setSameRoomTextFirst] = useState(true);
+  const [sameRoomPlayFinalVoice, setSameRoomPlayFinalVoice] = useState(false);
+  const [usingHeadphones, setUsingHeadphones] = useState(false);
   const [streamingPttDev, setStreamingPttDev] = useState(false);
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
@@ -70,6 +76,8 @@ export default function App() {
   const holdStartedAtRef = useRef<number | null>(null);
   const audioPlayQueueRef = useRef(Promise.resolve());
   const myParticipantIdRef = useRef<string | null>(null);
+  const turnParticipantIdRef = useRef<string | null>(null);
+  const turnPhaseRef = useRef<"waiting" | "speaking" | "processing">("waiting");
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +95,9 @@ export default function App() {
         setSpeakerGender(prefs.speakerGender);
         setConversationMode(prefs.conversationMode);
         setPlayTranslatedVoice(prefs.playTranslatedVoice);
+        setSameRoomTextFirst(prefs.sameRoomTextFirst);
+        setSameRoomPlayFinalVoice(prefs.sameRoomPlayFinalVoice);
+        setUsingHeadphones(prefs.usingHeadphones);
         setStreamingPttDev(Boolean(prefs.streamingPttDev));
       }
       setIsGuest(guest);
@@ -216,12 +227,18 @@ export default function App() {
       speakerGender: SpeakerGender;
       conversationMode: ConversationMode;
       playTranslatedVoice: boolean;
+      sameRoomTextFirst: boolean;
+      sameRoomPlayFinalVoice: boolean;
+      usingHeadphones: boolean;
       streamingPttDev?: boolean;
     }) => {
       setMyLang(settings.hearLang);
       setSpeakerGender(settings.speakerGender);
       setConversationMode(settings.conversationMode);
       setPlayTranslatedVoice(settings.playTranslatedVoice);
+      setSameRoomTextFirst(settings.sameRoomTextFirst);
+      setSameRoomPlayFinalVoice(settings.sameRoomPlayFinalVoice);
+      setUsingHeadphones(settings.usingHeadphones);
       if (settings.streamingPttDev !== undefined) {
         setStreamingPttDev(settings.streamingPttDev);
       }
@@ -240,6 +257,9 @@ export default function App() {
         speakerGender: settings.speakerGender,
         conversationMode: settings.conversationMode,
         playTranslatedVoice: settings.playTranslatedVoice,
+        sameRoomTextFirst: settings.sameRoomTextFirst,
+        sameRoomPlayFinalVoice: settings.sameRoomPlayFinalVoice,
+        usingHeadphones: settings.usingHeadphones,
         streamingPttDev: settings.streamingPttDev ?? streamingPttDev,
       });
     },
@@ -257,11 +277,17 @@ export default function App() {
       setSpeakerGender(prefs.speakerGender);
       setConversationMode(prefs.conversationMode);
       setPlayTranslatedVoice(prefs.playTranslatedVoice);
+      setSameRoomTextFirst(prefs.sameRoomTextFirst);
+      setSameRoomPlayFinalVoice(prefs.sameRoomPlayFinalVoice);
+      setUsingHeadphones(prefs.usingHeadphones);
     } else {
       setMyLang("en");
       setSpeakerGender("female");
       setConversationMode("push_to_talk");
       setPlayTranslatedVoice(true);
+      setSameRoomTextFirst(true);
+      setSameRoomPlayFinalVoice(false);
+      setUsingHeadphones(false);
     }
     setScreen("welcome");
   }, [auth.signOut, voiceProfile.setElevenLabsVoiceId]);
@@ -349,23 +375,46 @@ export default function App() {
       });
   }, []);
 
+  const translationPlaybackPrefs = useMemo(
+    (): TranslationPlaybackPrefs => ({
+      playTranslatedVoice,
+      sameRoomTextFirst,
+      sameRoomPlayFinalVoice,
+      usingHeadphones,
+    }),
+    [playTranslatedVoice, sameRoomTextFirst, sameRoomPlayFinalVoice, usingHeadphones],
+  );
+
   const handleIncomingTranslation = useCallback(
     (result: TranslationResult) => {
       if (
-        !playTranslatedVoice ||
-        !shouldPlayTranslationAudio(myParticipantIdRef.current, {
-          kind: "translation_result",
-          fromParticipantId: result.fromParticipantId,
-          turnId: result.turnId,
-          audioBase64: result.audioBase64,
-          skippedTts: result.skippedTts,
-        })
+        !shouldAutoPlayTranslationAudio(
+          myParticipantIdRef.current,
+          translationPlaybackPrefs,
+          {
+            kind: "translation_result",
+            fromParticipantId: result.fromParticipantId,
+            turnId: result.turnId,
+            audioBase64: result.audioBase64,
+            skippedTts: result.skippedTts,
+          },
+          {
+            partnerHoldActive: (() => {
+              const myId = myParticipantIdRef.current;
+              const speakerId = turnParticipantIdRef.current;
+              if (!myId || !speakerId || speakerId === myId) {
+                return false;
+              }
+              return turnPhaseRef.current === "speaking";
+            })(),
+          },
+        )
       ) {
         return;
       }
       enqueueIncomingAudio(result.audioBase64);
     },
-    [enqueueIncomingAudio, playTranslatedVoice],
+    [enqueueIncomingAudio, translationPlaybackPrefs],
   );
 
   const handlePartialTranslationAudio = useCallback(
@@ -376,20 +425,23 @@ export default function App() {
       role?: string;
     }) => {
       if (
-        !playTranslatedVoice ||
-        !shouldPlayTranslationAudio(myParticipantIdRef.current, {
-          kind: "partial_translation_audio",
-          fromParticipantId: payload.fromParticipantId,
-          turnId: payload.turnId,
-          role: payload.role,
-          audioBase64: payload.audioBase64,
-        })
+        !shouldAutoPlayTranslationAudio(
+          myParticipantIdRef.current,
+          translationPlaybackPrefs,
+          {
+            kind: "partial_translation_audio",
+            fromParticipantId: payload.fromParticipantId,
+            turnId: payload.turnId,
+            role: payload.role,
+            audioBase64: payload.audioBase64,
+          },
+        )
       ) {
         return;
       }
       enqueueIncomingAudio(payload.audioBase64!);
     },
-    [enqueueIncomingAudio, playTranslatedVoice],
+    [enqueueIncomingAudio, translationPlaybackPrefs],
   );
 
   const socket = useSocket({
@@ -398,6 +450,9 @@ export default function App() {
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
     playTranslatedVoice,
+    sameRoomTextFirst,
+    sameRoomPlayFinalVoice,
+    usingHeadphones,
     streamingPtt: isStreamingPttUplinkAvailable(streamingPttDev),
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
@@ -416,6 +471,11 @@ export default function App() {
   useEffect(() => {
     myParticipantIdRef.current = socket.participantId;
   }, [socket.participantId]);
+
+  useEffect(() => {
+    turnParticipantIdRef.current = socket.turnParticipantId;
+    turnPhaseRef.current = socket.turnPhase;
+  }, [socket.turnParticipantId, socket.turnPhase]);
 
   const handleAudioReady = useCallback(
     async (
@@ -637,6 +697,9 @@ export default function App() {
           speakerGender={speakerGender}
           conversationMode={conversationMode}
           playTranslatedVoice={playTranslatedVoice}
+          sameRoomTextFirst={sameRoomTextFirst}
+          sameRoomPlayFinalVoice={sameRoomPlayFinalVoice}
+          usingHeadphones={usingHeadphones}
           streamingPttDev={streamingPttDev}
           onCommitProfileSettings={handleCommitProfileSettings}
           voiceStatus={voiceProfile.voiceStatus}
