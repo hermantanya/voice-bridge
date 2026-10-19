@@ -1,3 +1,7 @@
+import type { ConversationMode } from "../config";
+
+import { isHandsFreeComingSoon } from "./conversationMode";
+
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 export type TurnPhase = "waiting" | "speaking" | "processing";
 
@@ -6,10 +10,17 @@ export function getSelfMicLabel(isSelfMuted: boolean): string {
   return isSelfMuted ? "Mic off" : "Mic on";
 }
 
-export function getSelfMicHint(isSelfMuted: boolean): string {
-  return isSelfMuted
-    ? "Muted — tap Unmute, then hold to talk."
-    : "Push-to-talk — hold the button while you speak. Hands-free comes later.";
+export function getSelfMicHint(
+  isSelfMuted: boolean,
+  conversationMode: ConversationMode = "push_to_talk",
+): string {
+  if (isSelfMuted) {
+    return "Muted — tap Unmute, then hold to talk.";
+  }
+  if (isHandsFreeComingSoon(conversationMode)) {
+    return "Hands-free is coming soon — hold the button while you speak.";
+  }
+  return "Push-to-talk — hold the button while you speak.";
 }
 
 export function getTurnLabel(input: {

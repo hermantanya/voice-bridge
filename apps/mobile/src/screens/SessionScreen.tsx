@@ -13,7 +13,13 @@ import {
 
 import { SpeakingTimeStat } from "../components/SpeakingTimeStat";
 import { TranscriptPanel } from "../components/TranscriptPanel";
-import { languageLabel, SERVER_URL, type LanguageCode } from "../config";
+import {
+  languageLabel,
+  SERVER_URL,
+  type ConversationMode,
+  type LanguageCode,
+} from "../config";
+import { getSessionModeSubtitle } from "../session/conversationMode";
 import type { TranscriptEntry, TranslationResult } from "../hooks/useSocket";
 import {
   canStartTalking,
@@ -29,6 +35,7 @@ type TurnPhase = "waiting" | "speaking" | "processing";
 type SessionScreenProps = {
   roomCode: string;
   myLang: LanguageCode;
+  conversationMode?: ConversationMode;
   partnerLang: LanguageCode | null;
   voiceStatus: VoiceProfileStatus;
   lastReceived: TranslationResult | null;
@@ -82,6 +89,7 @@ function statusLabel(status: SessionScreenProps["status"]): string {
 export function SessionScreen({
   roomCode,
   myLang,
+  conversationMode = "push_to_talk",
   partnerLang,
   voiceStatus,
   lastReceived,
@@ -136,7 +144,8 @@ export function SessionScreen({
   });
 
   const selfMicLabel = getSelfMicLabel(selfMuted);
-  const selfMicHint = getSelfMicHint(selfMuted);
+  const selfMicHint = getSelfMicHint(selfMuted, conversationMode);
+  const modeSubtitle = getSessionModeSubtitle(conversationMode);
 
   const turnLabel = getTurnLabel({
     participants,
@@ -474,7 +483,7 @@ export function SessionScreen({
       <View style={styles.header}>
         <Text style={styles.title}>Session</Text>
         <Text style={styles.roomCodeInline}>{roomCode}</Text>
-        <Text style={styles.modeSubtitle}>Push-to-talk (hold button to speak)</Text>
+        <Text style={styles.modeSubtitle}>{modeSubtitle}</Text>
       </View>
 
       <View

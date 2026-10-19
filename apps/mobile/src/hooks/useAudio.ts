@@ -9,6 +9,10 @@ import { readAsStringAsync } from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import {
+  isDeliverableRecording,
+  nativeRecordingFormatForUpload,
+} from "../session/nativeRecordingFormat";
 import { playNativeMp3Base64 } from "../session/nativeMp3Playback";
 import {
   clearSavedMicDeviceId,
@@ -258,13 +262,19 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
   }, [permissionGranted]);
 
   const deliverRecording = useCallback(
-    (audioBase64: string, format: string) => {
+    (audioBase64: string, format: string): boolean => {
       const startedAt = recordingStartedAtRef.current;
       recordingStartedAtRef.current = null;
       const recordingDurationMs = startedAt
         ? Math.max(0, Date.now() - startedAt)
         : 0;
+
+      if (!isDeliverableRecording(audioBase64, recordingDurationMs)) {
+        return false;
+      }
+
       onAudioReadyRef.current(audioBase64, format, recordingDurationMs);
+      return true;
     },
     [],
   );
@@ -385,8 +395,8 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
           }
 
           const audioBase64 = await blobToBase64(blob);
-          deliverRecording(audioBase64, format);
-          pendingStopResolveRef.current?.(true);
+          const delivered = deliverRecording(audioBase64, format);
+          pendingStopResolveRef.current?.(delivered);
           pendingStopResolveRef.current = null;
           })();
         };
@@ -534,13 +544,21 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
         return false;
       }
 
-      const audioBase64 = await readAsStringAsync(uri, {
-        encoding: "base64",
-      });
+      let audioBase64: string;
+      try {
+        audioBase64 = await readAsStringAsync(uri, {
+          encoding: "base64",
+        });
+      } catch {
+        return false;
+      }
 
-      const format = uri.endsWith(".caf") ? "caf" : "m4a";
-      deliverRecording(audioBase64, format);
-      return true;
+      if (!audioBase64.trim()) {
+        return false;
+      }
+
+      const format = nativeRecordingFormatForUpload(uri);
+      return deliverRecording(audioBase64, format);
     } finally {
       nativeStopRequestedRef.current = false;
     }
@@ -609,7 +627,12 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
 
     if (Platform.OS === "web") {
       const audio = new window.Audio(`data:audio/mp3;base64,${audioBase64}`);
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (error) {
+        console.warn("Web translation playback blocked or failed:", error);
+        throw error;
+      }
       return;
     }
 

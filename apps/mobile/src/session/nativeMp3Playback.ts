@@ -8,8 +8,10 @@ export async function playNativeMp3Base64(
   audioBase64: string,
   activePlayerRef?: { current: AudioPlayer | null },
 ): Promise<void> {
+  // Keep allowsRecording true so incoming playback does not stop an active
+  // hold-to-talk recording (expo-audio stops all recorders when recording is disabled).
   await setAudioModeAsync({
-    allowsRecording: false,
+    allowsRecording: true,
     playsInSilentMode: true,
   });
 
