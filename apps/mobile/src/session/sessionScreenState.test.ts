@@ -59,8 +59,8 @@ test("canStartTalking requires two participants", () => {
 });
 
 test("getSelfMicLabel reflects mute state", () => {
-  assert.equal(getSelfMicLabel(false), "Mic on");
-  assert.equal(getSelfMicLabel(true), "Mic off");
+  assert.equal(getSelfMicLabel(false), "Live");
+  assert.equal(getSelfMicLabel(true), "Muted");
 });
 
 test("getSelfMicHint explains push-to-talk vs muted", () => {

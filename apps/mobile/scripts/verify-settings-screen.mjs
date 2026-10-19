@@ -18,7 +18,7 @@ const required = [
   ["Create account", "guest account create entry"],
   ["showMicrophoneSettings", "microphone settings section"],
   ["Conversation mode", "conversation mode settings section"],
-  ["Coming soon", "hands-free coming soon label"],
+  ["CONVERSATION_MODES", "hands-free conversation mode option"],
   ["My gender", "gender settings section"],
   ["My voice", "voice profile section"],
   ["Set up my voice", "voice setup entry point"],

@@ -15,7 +15,10 @@ import {
   loadDevicePrefs,
   saveDevicePrefs,
 } from "./src/session/devicePrefsStorage";
+import { effectiveConversationMode, isHandsFreeMode } from "./src/session/conversationMode";
 import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp, shouldReleaseTurnAfterLocalStop } from "./src/session/holdToTalkSession";
+import { useHandsFreeListen } from "./src/hooks/useHandsFreeListen";
+import { createTranslationPlaybackQueue } from "./src/session/translationPlaybackQueue";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
@@ -50,6 +53,7 @@ export default function App() {
     useState<ConversationMode>("push_to_talk");
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
+  const [selfMuted, setSelfMuted] = useState(false);
   const [entryReady, setEntryReady] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [authMode, setAuthMode] = useState<AuthScreenMode>("sign-in");
@@ -60,6 +64,8 @@ export default function App() {
   const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
   const sessionReady = inSession && voiceProfile.loaded;
+  const sessionConversationMode = effectiveConversationMode(conversationMode);
+  const handsFreeSession = isHandsFreeMode(sessionConversationMode);
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
   );
@@ -319,12 +325,15 @@ export default function App() {
     [auth.signInWithOtp, authMode, finishAuthSuccess],
   );
 
+  const playbackQueueRef = useRef(createTranslationPlaybackQueue());
+
   const handleIncomingTranslation = useCallback((result: TranslationResult) => {
     if (result.skippedTts || !result.audioBase64.trim()) {
       return;
     }
-    void playAudioRef.current(result.audioBase64).catch((error) => {
-      console.warn("Could not play incoming translation:", error);
+    playbackQueueRef.current.enqueue({
+      audioBase64: result.audioBase64,
+      play: (audioBase64) => playAudioRef.current(audioBase64),
     });
   }, []);
 
@@ -333,9 +342,30 @@ export default function App() {
     myLang,
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
+    conversationMode: sessionConversationMode,
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
   });
+
+  const handleUtteranceReady = useCallback(
+    (
+      audioBase64: string,
+      format: string,
+      recordingDurationMs: number,
+      recordingStartedAt?: number,
+    ) => {
+      if (selfMuted) {
+        return;
+      }
+      socket.sendUtterance(
+        audioBase64,
+        format,
+        recordingDurationMs,
+        recordingStartedAt,
+      );
+    },
+    [selfMuted, socket.sendUtterance],
+  );
 
   const handleAudioReady = useCallback(
     (audioBase64: string, format: string, recordingDurationMs: number) => {
@@ -356,12 +386,28 @@ export default function App() {
 
   const audio = useAudio({
     onAudioReady: handleAudioReady,
-    enabled: sessionReady,
+    enabled: sessionReady && !handsFreeSession,
+  });
+
+  const handsFree = useHandsFreeListen({
+    enabled: sessionReady && handsFreeSession,
+    selfMuted,
+    participants: socket.participants,
+    connected: socket.status === "connected",
+    selectedDeviceId: audio.selectedDeviceId,
+    onUtteranceReady: handleUtteranceReady,
   });
 
   useEffect(() => {
     playAudioRef.current = audio.playAudioBase64;
   }, [audio.playAudioBase64]);
+
+  useEffect(() => {
+    if (!inSession) {
+      setSelfMuted(false);
+      playbackQueueRef.current.reset();
+    }
+  }, [inSession]);
 
   const handleStopRecording = useCallback(async () => {
     const hadSpeakingTurn = socket.isMyTurn;
@@ -429,6 +475,9 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (handsFreeSession) {
+      return;
+    }
     if (
       !shouldForceStopRecording({
         inSession,
@@ -444,6 +493,7 @@ export default function App() {
   }, [
     audio.isRecording,
     handleStopRecording,
+    handsFreeSession,
     inSession,
     socket.isMyTurn,
     socket.isOpenTurn,
@@ -550,7 +600,7 @@ export default function App() {
         <SessionScreen
           roomCode={activeRoomCode}
           myLang={myLang}
-          conversationMode={conversationMode}
+          conversationMode={sessionConversationMode}
           partnerLang={socket.partnerLang}
           voiceStatus={voiceProfile.voiceStatus}
           lastReceived={socket.lastReceived}
@@ -559,7 +609,7 @@ export default function App() {
           loadingVoiceProfile={!voiceProfile.loaded}
           participantId={socket.participantId}
           errorMessage={socket.errorMessage}
-          isRecording={audio.isRecording}
+          isRecording={handsFreeSession ? handsFree.isCapturingUtterance : audio.isRecording}
           isMyTurn={socket.isMyTurn}
           isOpenTurn={socket.isOpenTurn}
           isProcessing={socket.isProcessing}
@@ -573,6 +623,11 @@ export default function App() {
           onStopRecording={handleStopRecording}
           onEndSpeaking={handleEndSpeaking}
           onLeave={handleLeaveSession}
+          selfMuted={selfMuted}
+          onSelfMutedChange={setSelfMuted}
+          isHandsFreeMode={handsFreeSession}
+          handsFreeListening={handsFree.isListening}
+          handsFreeCapturing={handsFree.isCapturingUtterance}
         />
       );
     }

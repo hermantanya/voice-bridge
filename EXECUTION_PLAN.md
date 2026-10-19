@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **v2.0 phase 2** — server `utterance` routing behind `conversationMode`; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **v2.0 phase 2** — server `utterance` routing; **v2.0 phase 3** — client VAD → `utterance` when hands-free + live; **v2.0 phase 4** — Settings mode toggle dogfood; **external beta** optional when domain ready)
 
 ---
 
@@ -133,18 +133,18 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ### Mobile / web
 
-- [ ] Settings: **Conversation mode** — Push-to-talk vs Hands-free (persist device-local or profile — TBD)
-- [ ] Session UI: **Mute / Unmute self** + always-visible status (color + text + accessibility)
-- [ ] Hands-free: VAD → utterance boundaries → send; playback **queue** on incoming translations
-- [ ] Push-to-talk: keep current hold button; mute disables hold/VAD
-- [ ] Copy and turn labels differ by mode (no “hold to talk” when hands-free is live)
+- [x] Settings: **Conversation mode** — Push-to-talk vs Hands-free (device-local via AsyncStorage)
+- [x] Session UI: **Mute / Unmute self** + always-visible status (color + text + accessibility)
+- [x] Hands-free: VAD → utterance boundaries → send; playback **queue** on incoming translations
+- [x] Push-to-talk: keep current hold button; mute disables hold/VAD
+- [x] Copy and turn labels differ by mode (no “hold to talk” when hands-free is live)
 
 ### Phased delivery
 
 1. [x] **Self-mute + indicator** on current PTT session (push-to-talk only; mute stops an active hold without sending short/empty audio, releases the floor only if you held the speaking turn; unmute restores hold-to-talk)
 2. [x] **Server utterance routing** (Option A) behind mode flag — clients still default to PTT until phase 3–4
-3. [ ] **Client VAD** wired to utterance send when hands-free + live
-4. [ ] **Settings mode toggle** + dogfood on phone + web
+3. [x] **Client VAD** wired to utterance send when hands-free + live
+4. [x] **Settings mode toggle** + dogfood on phone + web
 5. [ ] Bump **v2.0.0** when hands-free + mute + PTT fallback ship
 
 ---

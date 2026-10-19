@@ -1,20 +1,23 @@
 import type { ConversationMode } from "../config";
 
-/** v2 VAD not enabled — hands-free preference still uses push-to-talk in session. */
 export function effectiveConversationMode(
   stored: ConversationMode,
-): "push_to_talk" {
-  void stored;
-  return "push_to_talk";
+): ConversationMode {
+  return stored;
 }
 
-export function isHandsFreeComingSoon(stored: ConversationMode): boolean {
+export function isHandsFreeMode(stored: ConversationMode): boolean {
   return stored === "hands_free";
 }
 
+/** @deprecated use isHandsFreeMode */
+export function isHandsFreeComingSoon(stored: ConversationMode): boolean {
+  return false;
+}
+
 export function getSessionModeSubtitle(stored: ConversationMode): string {
-  if (isHandsFreeComingSoon(stored)) {
-    return "Hands-free (coming soon) — hold button to speak for now";
+  if (isHandsFreeMode(stored)) {
+    return "Hands-free — speak naturally when mic is live";
   }
   return "Push-to-talk (hold button to speak)";
 }

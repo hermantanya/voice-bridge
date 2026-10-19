@@ -11,7 +11,7 @@ export type LanguageCode = "en" | "he" | "ru";
 
 export type SpeakerGender = "female" | "male";
 
-/** Device preference; hands-free UI only until VAD ships (session stays PTT). */
+/** Device preference for session mic behavior (persisted locally). */
 export type ConversationMode = "push_to_talk" | "hands_free";
 
 export const CONVERSATION_MODES: {
@@ -27,7 +27,7 @@ export const CONVERSATION_MODES: {
   {
     value: "hands_free",
     label: "Hands-free",
-    description: "Speak without holding a button. Coming soon.",
+    description: "Speak naturally; Voice Bridge detects pauses and sends utterances.",
   },
 ];
 

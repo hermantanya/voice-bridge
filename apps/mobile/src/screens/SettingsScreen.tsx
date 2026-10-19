@@ -18,7 +18,6 @@ import {
   type LanguageCode,
   type SpeakerGender,
 } from "../config";
-import { isHandsFreeComingSoon } from "../session/conversationMode";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { playVoicePreviewAudio } from "../session/voicePreviewPlayback";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
@@ -211,8 +210,8 @@ export function SettingsScreen({
 
       <Text style={[styles.title, styles.sectionTitle]}>Conversation mode</Text>
       <Text style={styles.subtitle}>
-        How you speak in a session. Push-to-talk is available now; hands-free
-        will listen automatically when it ships.
+        How you speak in a session. Push-to-talk uses the hold button;
+        hands-free listens continuously when your mic is live.
       </Text>
 
       <View style={styles.card}>
@@ -233,9 +232,6 @@ export function SettingsScreen({
                 >
                   {option.label}
                 </Text>
-                {option.value === "hands_free" ? (
-                  <Text style={styles.comingSoonBadge}>Coming soon</Text>
-                ) : null}
               </View>
               <Text
                 style={[
@@ -248,12 +244,6 @@ export function SettingsScreen({
             </Pressable>
           );
         })}
-        {isHandsFreeComingSoon(draftConversationMode) ? (
-          <Text style={styles.conversationModeNote}>
-            Sessions still use push-to-talk until hands-free is enabled on this
-            device.
-          </Text>
-        ) : null}
       </View>
 
       <Text style={[styles.title, styles.sectionTitle]}>My gender</Text>
