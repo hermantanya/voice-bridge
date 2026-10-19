@@ -24,11 +24,21 @@ export function streamingPttDebugLog(
   console.log(`[streaming-ptt] ${message}`);
 }
 
+/** Web may stream PCM during hold when server accepted streaming PTT on join. */
 export function isStreamingPttUplinkAvailable(
   devToggleEnabled: boolean,
+  serverStreamingPttEnabled = false,
 ): boolean {
   if (Platform.OS !== "web") {
     return false;
   }
-  return isStreamingPttEnvEnabled() || devToggleEnabled;
+  return (
+    isStreamingPttEnvEnabled() ||
+    devToggleEnabled ||
+    serverStreamingPttEnabled
+  );
+}
+
+export function shouldRequestStreamingPttOnJoin(): boolean {
+  return Platform.OS === "web";
 }

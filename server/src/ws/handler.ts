@@ -538,6 +538,7 @@ export function registerSocketHandlers(
         partnerLang: partnerTranslateTo,
         conversationMode,
         turnState,
+        streamingPttEnabled: socket.data.streamingPtt === true,
         ...buildUsagePayload(room),
       });
 
@@ -798,6 +799,9 @@ export function registerSocketHandlers(
             if (turn) {
               turn.streamingFailed = true;
             }
+            socket.emit("error", {
+              message: `Live transcription unavailable (${message}). Translation will finish when you release.`,
+            });
           },
         },
         sourceLangHint,

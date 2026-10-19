@@ -36,6 +36,45 @@ export function isPartnerTurnActive(input: {
   );
 }
 
+export type PartnerLiveLine = {
+  kind: "text" | "placeholder";
+  text: string;
+};
+
+export function getPartnerLiveSourceLine(input: {
+  partnerPartial?: { sourceText?: string } | null;
+  partnerTurnActive: boolean;
+  turnPhase: TurnPhase;
+}): PartnerLiveLine | null {
+  const source = input.partnerPartial?.sourceText?.trim() ?? "";
+  if (source) {
+    return { kind: "text", text: source };
+  }
+  if (input.partnerTurnActive && input.turnPhase === "speaking") {
+    return { kind: "placeholder", text: "Listening…" };
+  }
+  return null;
+}
+
+export function getPartnerLiveTranslationLine(input: {
+  partnerPartial?: { sourceText?: string; translatedText?: string } | null;
+  partnerTurnActive: boolean;
+  turnPhase: TurnPhase;
+}): PartnerLiveLine | null {
+  const translated = input.partnerPartial?.translatedText?.trim() ?? "";
+  if (translated) {
+    return { kind: "text", text: translated };
+  }
+
+  const source = input.partnerPartial?.sourceText?.trim() ?? "";
+  const partnerProcessing =
+    input.partnerTurnActive && input.turnPhase === "processing";
+  if (source || partnerProcessing) {
+    return { kind: "placeholder", text: "Translating…" };
+  }
+  return null;
+}
+
 export function shouldShowPartnerLiveCard(input: {
   partnerTurnActive: boolean;
   partnerPartial?: { sourceText?: string; translatedText?: string } | null;

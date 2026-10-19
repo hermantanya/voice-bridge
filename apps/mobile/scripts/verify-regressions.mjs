@@ -137,7 +137,8 @@ const checks = [
       "partnerPartial",
       "accessibilityLiveRegion",
       "shouldShowPartnerLiveCard",
-      "Listening…",
+      "getPartnerLiveSourceLine",
+      "getPartnerLiveTranslationLine",
     ],
   },
   {

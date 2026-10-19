@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
 import { SERVER_URL, type LanguageCode, type SpeakerGender } from "../config";
+import { shouldRequestStreamingPttOnJoin } from "../session/streamingPtt";
 import {
   buildJoinRoomPayload,
   shouldApplyTurnState,
@@ -20,7 +21,6 @@ import {
   applyTranslationSentToTranscript,
   flushPartnerPartialToTranscript,
   mergePartnerPartial,
-  partnerPartialFromEvent,
   type PartnerPartial,
   type TranscriptEntry,
 } from "../session/transcriptState";
@@ -78,6 +78,7 @@ type JoinedRoomPayload = {
   myLang: LanguageCode;
   partnerLang?: LanguageCode;
   turnState?: TurnState;
+  streamingPttEnabled?: boolean;
   totalActiveConversationMs?: number;
   billableMsByParticipant?: Record<string, number>;
   sessionStartedAt?: number | null;
@@ -175,6 +176,8 @@ export function useSocket({
       return;
     }
 
+    const requestStreaming =
+      shouldRequestStreamingPttOnJoin() || streamingPttRef.current;
     socket.emit(
       "join_room",
       buildJoinRoomPayload({
@@ -183,7 +186,7 @@ export function useSocket({
         speakerGender: speakerGenderRef.current,
         elevenlabsVoiceId: elevenlabsVoiceIdRef.current,
         playTranslatedVoice: playTranslatedVoiceRef.current,
-        streamingPtt: streamingPttRef.current ? true : undefined,
+        streamingPtt: requestStreaming ? true : undefined,
       }),
     );
   }, []);
@@ -311,6 +314,8 @@ export function useSocket({
   const [partnerPartial, setPartnerPartialState] = useState<PartnerPartial | null>(
     null,
   );
+  const [serverStreamingPttEnabled, setServerStreamingPttEnabled] =
+    useState(false);
 
   const setPartnerPartial = useCallback((value: PartnerPartial | null) => {
     partnerPartialRef.current = value;
@@ -424,6 +429,7 @@ export function useSocket({
     setMyBillableMs(0);
     setPartnerBillableMs(0);
     setSessionStartedAt(null);
+    setServerStreamingPttEnabled(false);
     roomActiveSyncedAtRef.current = 0;
     pendingSpeechMsRef.current = 0;
     resetTurnState();
@@ -558,10 +564,14 @@ export function useSocket({
     [],
   );
 
+  const isStreamingPttClientEnabled = useCallback((): boolean => {
+    return streamingPttRef.current || serverStreamingPttEnabled;
+  }, [serverStreamingPttEnabled]);
+
   const startStreamingPtt = useCallback((): Promise<boolean> => {
     return new Promise((resolve) => {
       const socket = socketRef.current;
-      if (!socket?.connected || !streamingPttRef.current) {
+      if (!socket?.connected || !isStreamingPttClientEnabled()) {
         streamingPttDebugLog("start skipped (not connected or flag off)");
         resolve(false);
         return;
@@ -591,12 +601,12 @@ export function useSocket({
         },
       );
     });
-  }, []);
+  }, [isStreamingPttClientEnabled]);
 
   const sendStreamingAudioChunk = useCallback(
     (audioBase64: string, format: string) => {
       const socket = socketRef.current;
-      if (!socket?.connected || !streamingPttRef.current) {
+      if (!socket?.connected || !isStreamingPttClientEnabled()) {
         return;
       }
 
@@ -616,7 +626,7 @@ export function useSocket({
         format,
       });
     },
-    [],
+    [isStreamingPttClientEnabled],
   );
 
   const stopStreamingPtt = useCallback(
@@ -628,7 +638,7 @@ export function useSocket({
     ): Promise<boolean> => {
       return new Promise((resolve) => {
         const socket = socketRef.current;
-        if (!socket?.connected || !streamingPttRef.current) {
+        if (!socket?.connected || !isStreamingPttClientEnabled()) {
           resolve(false);
           return;
         }
@@ -690,7 +700,7 @@ export function useSocket({
         );
       });
     },
-    [sendAudioChunk],
+    [isStreamingPttClientEnabled, sendAudioChunk],
   );
 
   useEffect(() => {
@@ -730,6 +740,11 @@ export function useSocket({
       participantIdRef.current = payload.participantId;
       setParticipants(payload.participants);
       setPartnerLang(payload.partnerLang ?? null);
+      const serverStreaming = payload.streamingPttEnabled === true;
+      setServerStreamingPttEnabled(serverStreaming);
+      if (serverStreaming) {
+        streamingPttRef.current = true;
+      }
       applyUsagePayload(payload);
       ensureSessionStartedLocally(payload.participants);
       if (payload.turnState) {
@@ -800,7 +815,7 @@ export function useSocket({
         return;
       }
       setPartnerPartialState((current) => {
-        const next = mergePartnerPartial(current, payload) ?? current;
+        const next = mergePartnerPartial(current, payload);
         partnerPartialRef.current = next;
         return next;
       });
@@ -834,15 +849,16 @@ export function useSocket({
       if (payload.fromParticipantId === participantIdRef.current) {
         return;
       }
-      const livePartial = partnerPartialFromEvent({
-        turnId: payload.turnId,
-        fromParticipantId: payload.fromParticipantId,
-        sourceText: payload.sourceText,
-        translatedText: payload.translatedText,
+      setPartnerPartialState((current) => {
+        const next = mergePartnerPartial(current, {
+          turnId: payload.turnId,
+          fromParticipantId: payload.fromParticipantId,
+          sourceText: payload.sourceText,
+          translatedText: payload.translatedText,
+        });
+        partnerPartialRef.current = next;
+        return next;
       });
-      if (livePartial) {
-        setPartnerPartial(livePartial);
-      }
       setTranscript((entries) => {
         const next = appendTranscriptIfNew(
           entries,
@@ -968,6 +984,7 @@ export function useSocket({
     lastReceived,
     transcript,
     partnerPartial,
+    serverStreamingPttEnabled,
     totalActiveConversationMs: displayTotalActiveConversationMs,
     myBillableMs,
     partnerBillableMs,

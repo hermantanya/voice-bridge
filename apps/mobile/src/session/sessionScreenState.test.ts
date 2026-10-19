@@ -6,6 +6,8 @@ import {
   getSelfMicHint,
   getSelfMicLabel,
   getTurnLabel,
+  getPartnerLiveSourceLine,
+  getPartnerLiveTranslationLine,
   isPartnerTurnActive,
   shouldShowPartnerLiveCard,
 } from "./sessionScreenState.js";
@@ -119,6 +121,70 @@ test("shouldShowPartnerLiveCard hides when floor is open and no partial", () => 
       partnerPartial: null,
     }),
     false,
+  );
+});
+
+test("partner live card streams partial translation text during hold", () => {
+  const partnerTurnActive = isPartnerTurnActive({
+    turnParticipantId: "partner-id",
+    participantId: "me-id",
+    turnPhase: "speaking",
+  });
+
+  assert.deepEqual(
+    getPartnerLiveSourceLine({
+      partnerPartial: { sourceText: "hello there" },
+      partnerTurnActive,
+      turnPhase: "speaking",
+    }),
+    { kind: "text", text: "hello there" },
+  );
+
+  assert.deepEqual(
+    getPartnerLiveTranslationLine({
+      partnerPartial: {
+        sourceText: "hello there",
+        translatedText: "shalom",
+      },
+      partnerTurnActive,
+      turnPhase: "speaking",
+    }),
+    { kind: "text", text: "shalom" },
+  );
+});
+
+test("partner live card shows translating only after source or partner processing", () => {
+  const partnerTurnActive = isPartnerTurnActive({
+    turnParticipantId: "partner-id",
+    participantId: "me-id",
+    turnPhase: "speaking",
+  });
+
+  assert.equal(
+    getPartnerLiveTranslationLine({
+      partnerPartial: null,
+      partnerTurnActive,
+      turnPhase: "speaking",
+    }),
+    null,
+  );
+
+  assert.deepEqual(
+    getPartnerLiveTranslationLine({
+      partnerPartial: { sourceText: "hi" },
+      partnerTurnActive,
+      turnPhase: "speaking",
+    }),
+    { kind: "placeholder", text: "Translating…" },
+  );
+
+  assert.deepEqual(
+    getPartnerLiveTranslationLine({
+      partnerPartial: null,
+      partnerTurnActive,
+      turnPhase: "processing",
+    }),
+    { kind: "placeholder", text: "Translating…" },
   );
 });
 

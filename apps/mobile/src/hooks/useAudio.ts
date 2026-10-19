@@ -340,6 +340,22 @@ export function useAudio({
           return;
         }
 
+        let streamingSessionReady = false;
+        if (
+          streamingUplinkEnabledRef.current &&
+          onStreamingRecordingStartedRef.current
+        ) {
+          try {
+            await onStreamingRecordingStartedRef.current();
+            streamingSessionReady = true;
+          } catch (error) {
+            streamingPttDebugLog("streaming session start failed before capture", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+            console.warn("Streaming PTT session start failed:", error);
+          }
+        }
+
         const { mimeType, format } = getWebRecordingOptions();
         let stream: MediaStream;
         const micDeviceId = resolveMicDeviceId();
@@ -453,23 +469,13 @@ export function useAudio({
           recorder.stop();
         } else {
           setIsRecording(true);
-          void (async () => {
-            try {
-              await onStreamingRecordingStartedRef.current?.();
-            } catch (error) {
-              streamingPttDebugLog("streaming session start failed during hold", {
-                message: error instanceof Error ? error.message : String(error),
-              });
-              console.warn("Streaming PTT session start failed:", error);
-            }
-            if (
-              sessionId !== webSessionRef.current ||
-              webStopRequestedRef.current ||
-              !streamingUplinkEnabledRef.current ||
-              !onStreamingChunkRef.current
-            ) {
-              return;
-            }
+          if (
+            streamingSessionReady &&
+            streamingUplinkEnabledRef.current &&
+            onStreamingChunkRef.current &&
+            sessionId === webSessionRef.current &&
+            !webStopRequestedRef.current
+          ) {
             streamingCaptureRef.current?.stop();
             streamingCaptureRef.current = startStreamingPcmCapture(
               stream,
@@ -477,7 +483,7 @@ export function useAudio({
                 onStreamingChunkRef.current?.(pcm16Base64, "pcm16");
               },
             );
-          })();
+          }
         }
       } finally {
         webStartInProgressRef.current = false;

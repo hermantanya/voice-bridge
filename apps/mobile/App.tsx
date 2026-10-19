@@ -63,10 +63,6 @@ export default function App() {
   const voiceProfile = useVoiceProfile();
   const inSession = screen === "session" && !!activeRoomCode;
   const sessionReady = inSession && voiceProfile.loaded;
-  const streamingPttUplink = useMemo(
-    () => isStreamingPttUplinkAvailable(streamingPttDev),
-    [streamingPttDev],
-  );
   const playAudioRef = useRef<(audioBase64: string) => Promise<void>>(
     async () => {},
   );
@@ -381,11 +377,20 @@ export default function App() {
     speakerGender,
     elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
     playTranslatedVoice,
-    streamingPtt: streamingPttUplink,
+    streamingPtt: isStreamingPttUplinkAvailable(streamingPttDev),
     enabled: sessionReady,
     onIncomingTranslation: handleIncomingTranslation,
     onPartialTranslationAudio: handlePartialTranslationAudio,
   });
+
+  const streamingPttUplink = useMemo(
+    () =>
+      isStreamingPttUplinkAvailable(
+        streamingPttDev,
+        socket.serverStreamingPttEnabled,
+      ),
+    [streamingPttDev, socket.serverStreamingPttEnabled],
+  );
 
   const handleAudioReady = useCallback(
     async (
@@ -422,9 +427,12 @@ export default function App() {
     }
     const ok = await socket.startStreamingPtt();
     if (!ok) {
+      socket.setErrorMessage(
+        "Live transcript unavailable — translation will finish when you release.",
+      );
       throw new Error("Could not start streaming session");
     }
-  }, [socket.startStreamingPtt, streamingPttUplink]);
+  }, [socket.setErrorMessage, socket.startStreamingPtt, streamingPttUplink]);
 
   const handleStreamingChunk = useCallback(
     (audioBase64: string, format: string) => {

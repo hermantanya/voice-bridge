@@ -25,6 +25,8 @@ import {
   canStartTalking,
   getSelfMicHint,
   getSelfMicLabel,
+  getPartnerLiveSourceLine,
+  getPartnerLiveTranslationLine,
   getTurnLabel,
   isPartnerTurnActive,
   shouldShowPartnerLiveCard,
@@ -143,6 +145,17 @@ export function SessionScreen({
   const showPartnerLiveCard = shouldShowPartnerLiveCard({
     partnerTurnActive,
     partnerPartial,
+  });
+
+  const partnerLiveSourceLine = getPartnerLiveSourceLine({
+    partnerPartial,
+    partnerTurnActive,
+    turnPhase,
+  });
+  const partnerLiveTranslationLine = getPartnerLiveTranslationLine({
+    partnerPartial,
+    partnerTurnActive,
+    turnPhase,
   });
 
   const canTalk = canStartTalking({
@@ -643,22 +656,27 @@ export function SessionScreen({
         {showPartnerLiveCard ? (
           <View style={styles.partialCard} accessibilityLiveRegion="polite">
             <Text style={styles.partialLabel}>Partner (live)</Text>
-            {partnerPartial?.sourceText ? (
-              <Text style={styles.partialSource}>{partnerPartial.sourceText}</Text>
-            ) : partnerTurnActive &&
-              turnPhase === "speaking" &&
-              !partnerPartial?.sourceText &&
-              !partnerPartial?.translatedText ? (
-              <Text style={styles.partialTranslationMuted}>Listening…</Text>
-            ) : null}
-            {partnerPartial?.translatedText ? (
-              <Text style={styles.partialTranslation}>
-                {partnerPartial.translatedText}
+            {partnerLiveSourceLine ? (
+              <Text
+                style={
+                  partnerLiveSourceLine.kind === "text"
+                    ? styles.partialSource
+                    : styles.partialTranslationMuted
+                }
+              >
+                {partnerLiveSourceLine.text}
               </Text>
-            ) : partnerPartial?.sourceText ||
-              turnPhase === "processing" ||
-              !partnerTurnActive ? (
-              <Text style={styles.partialTranslationMuted}>Translating…</Text>
+            ) : null}
+            {partnerLiveTranslationLine ? (
+              <Text
+                style={
+                  partnerLiveTranslationLine.kind === "text"
+                    ? styles.partialTranslation
+                    : styles.partialTranslationMuted
+                }
+              >
+                {partnerLiveTranslationLine.text}
+              </Text>
             ) : null}
           </View>
         ) : null}
