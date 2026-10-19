@@ -220,6 +220,7 @@ export default function App() {
     await auth.signOut();
     await saveGuestMode(false);
     setIsGuest(false);
+    await voiceProfile.setElevenLabsVoiceId(null);
     const prefs = await loadDevicePrefs();
     if (prefs) {
       setMyLang(prefs.hearLang);
@@ -229,7 +230,7 @@ export default function App() {
       setSpeakerGender("female");
     }
     setScreen("welcome");
-  }, [auth.signOut]);
+  }, [auth.signOut, voiceProfile.setElevenLabsVoiceId]);
 
   const openAuth = useCallback(
     (mode: AuthScreenMode, returnTo: AuthReturnScreen) => {
@@ -252,11 +253,16 @@ export default function App() {
       profile: ServerProfileResponse,
       mode: AuthScreenMode,
     ): Promise<void> => {
+      const guestUpgradingAccount = isGuest;
       await saveGuestMode(false);
       setIsGuest(false);
       setMyLang(profile.profile.hearLang);
       setSpeakerGender(profile.profile.speakerGender);
-      if (
+
+      if (mode === "create-account") {
+        await voiceProfile.setElevenLabsVoiceId(null);
+      } else if (
+        guestUpgradingAccount &&
         !profile.profile.elevenlabsVoiceId &&
         voiceProfile.elevenlabsVoiceId
       ) {
@@ -265,12 +271,24 @@ export default function App() {
             elevenlabsVoiceId: voiceProfile.elevenlabsVoiceId,
           });
         } catch (error) {
-          console.warn("Could not upload local voice on sign-in:", error);
+          console.warn("Could not upload guest voice on sign-in:", error);
         }
+      } else {
+        await applyServerProfileVoice(
+          profile.profile.elevenlabsVoiceId,
+          voiceProfile.elevenlabsVoiceId,
+          voiceProfile.setElevenLabsVoiceId,
+        );
       }
+
       setScreen(mode === "create-account" ? "settings" : "home");
     },
-    [auth.updateProfile, voiceProfile.elevenlabsVoiceId],
+    [
+      auth.updateProfile,
+      isGuest,
+      voiceProfile.elevenlabsVoiceId,
+      voiceProfile.setElevenLabsVoiceId,
+    ],
   );
 
   const handleVerifyOtp = useCallback(
