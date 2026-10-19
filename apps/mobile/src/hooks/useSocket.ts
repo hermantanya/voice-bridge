@@ -24,7 +24,11 @@ import {
   type PartnerPartial,
   type TranscriptEntry,
 } from "../session/transcriptState";
-import { shouldPlayTranslationAudio } from "../session/translationPlayback";
+import {
+  isLiveTranscriptionUnavailableMessage,
+  isLocalStreamingSpeakerTurn,
+  shouldPlayTranslationAudio,
+} from "../session/translationPlayback";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -572,11 +576,25 @@ export function useSocket({
     return streamingPttRef.current || serverStreamingPttEnabled;
   }, [serverStreamingPttEnabled]);
 
+  const isLocalStreamingSpeaker = useCallback((): boolean => {
+    return isLocalStreamingSpeakerTurn(
+      participantIdRef.current,
+      turnStateRef.current.turnParticipantId,
+      turnStateRef.current.phase,
+    );
+  }, []);
+
   const startStreamingPtt = useCallback((): Promise<boolean> => {
     return new Promise((resolve) => {
       const socket = socketRef.current;
       if (!socket?.connected || !isStreamingPttClientEnabled()) {
         streamingPttDebugLog("start skipped (not connected or flag off)");
+        resolve(false);
+        return;
+      }
+
+      if (!isLocalStreamingSpeaker()) {
+        streamingPttDebugLog("start skipped (listener — no streaming uplink)");
         resolve(false);
         return;
       }
@@ -598,19 +616,24 @@ export function useSocket({
           streamingPttDebugLog("streaming_ptt_start failed", {
             message: response?.message,
           });
-          if (response?.message) {
+          if (response?.message && isLocalStreamingSpeaker()) {
             setErrorMessage(response.message);
           }
           resolve(false);
         },
       );
     });
-  }, [isStreamingPttClientEnabled]);
+  }, [isLocalStreamingSpeaker, isStreamingPttClientEnabled]);
 
   const sendStreamingAudioChunk = useCallback(
     (audioBase64: string, format: string) => {
       const socket = socketRef.current;
-      if (!socket?.connected || !isStreamingPttClientEnabled()) {
+      if (
+        !socket?.connected ||
+        !isStreamingPttClientEnabled() ||
+        !isLocalStreamingSpeaker() ||
+        !streamingSessionActiveRef.current
+      ) {
         return;
       }
 
@@ -630,7 +653,7 @@ export function useSocket({
         format,
       });
     },
-    [isStreamingPttClientEnabled],
+    [isLocalStreamingSpeaker, isStreamingPttClientEnabled],
   );
 
   const stopStreamingPtt = useCallback(
@@ -836,6 +859,9 @@ export function useSocket({
     });
 
     socket.on("partial_translation", (payload: PartialTranslationPayload) => {
+      if (payload.fromParticipantId === participantIdRef.current) {
+        return;
+      }
       streamingPttDebugLog("partial_translation received", {
         chars: payload.translatedText?.length ?? 0,
       });
@@ -969,7 +995,18 @@ export function useSocket({
     );
 
     socket.on("error", (payload: { message?: string }) => {
-      setErrorMessage(payload.message ?? "Unknown socket error");
+      const message = payload.message ?? "Unknown socket error";
+      if (
+        isLiveTranscriptionUnavailableMessage(message) &&
+        !isLocalStreamingSpeakerTurn(
+          participantIdRef.current,
+          turnStateRef.current.turnParticipantId,
+          turnStateRef.current.phase,
+        )
+      ) {
+        return;
+      }
+      setErrorMessage(message);
     });
 
     return () => {

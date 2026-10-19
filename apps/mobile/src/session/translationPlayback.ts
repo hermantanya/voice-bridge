@@ -58,3 +58,18 @@ export function shouldPlayTranslationAudio(
 
   return true;
 }
+
+export function isLiveTranscriptionUnavailableMessage(message: string): boolean {
+  return message.includes("Live transcription unavailable");
+}
+
+export function isLocalStreamingSpeakerTurn(
+  myParticipantId: string | null,
+  turnParticipantId: string | null,
+  turnPhase: "waiting" | "speaking" | "processing",
+): boolean {
+  if (!myParticipantId) {
+    return false;
+  }
+  return turnParticipantId === myParticipantId && turnPhase === "speaking";
+}

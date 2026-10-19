@@ -75,6 +75,7 @@ export function createOpenAIRealtimeTranscriptionSession(
   sourceLangHint?: string,
 ): RealtimeTranscriptionSession {
   let accumulated = "";
+  let appendedAudio = false;
   let finalResolve: ((text: string) => void) | null = null;
   let finalReject: ((error: Error) => void) | null = null;
   let closed = false;
@@ -157,6 +158,10 @@ export function createOpenAIRealtimeTranscriptionSession(
       if (closed || ws.readyState !== WebSocket.OPEN) {
         return;
       }
+      if (!audioBase64.trim()) {
+        return;
+      }
+      appendedAudio = true;
       ws.send(
         JSON.stringify({
           type: "input_audio_buffer.append",
@@ -173,6 +178,13 @@ export function createOpenAIRealtimeTranscriptionSession(
 
         finalResolve = resolve;
         finalReject = reject;
+
+        if (!appendedAudio) {
+          finalResolve = null;
+          finalReject = null;
+          resolve(accumulated.trim());
+          return;
+        }
 
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));

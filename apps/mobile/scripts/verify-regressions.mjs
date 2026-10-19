@@ -190,6 +190,30 @@ const checks = [
     ],
   },
   {
+    name: "streaming uplink only on speaker turn",
+    file: "src/hooks/useSocket.ts",
+    required: [
+      "isLocalStreamingSpeaker",
+      "start skipped (listener",
+      "isLiveTranscriptionUnavailableMessage",
+      "partial_translation",
+      "fromParticipantId === participantIdRef.current",
+    ],
+  },
+  {
+    name: "web speaker streaming start soft-fails to batch",
+    file: "App.tsx",
+    required: [
+      "handleStreamingRecordingStarted",
+      "startStreamingPtt",
+      "socket.isMyTurn",
+    ],
+    forbidden: [
+      "Could not start streaming session",
+      "Live transcript unavailable",
+    ],
+  },
+  {
     name: "voice profile hook and storage exist",
     file: "src/hooks/useVoiceProfile.ts",
     required: [

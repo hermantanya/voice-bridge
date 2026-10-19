@@ -447,17 +447,14 @@ export default function App() {
   );
 
   const handleStreamingRecordingStarted = useCallback(async () => {
-    if (!streamingPttUplink) {
+    if (!streamingPttUplink || !socket.isMyTurn) {
       return;
     }
     const ok = await socket.startStreamingPtt();
     if (!ok) {
-      socket.setErrorMessage(
-        "Live transcript unavailable — translation will finish when you release.",
-      );
-      throw new Error("Could not start streaming session");
+      return;
     }
-  }, [socket.setErrorMessage, socket.startStreamingPtt, streamingPttUplink]);
+  }, [socket.isMyTurn, socket.startStreamingPtt, streamingPttUplink]);
 
   const handleStreamingChunk = useCallback(
     (audioBase64: string, format: string) => {

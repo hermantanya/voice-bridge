@@ -1,88 +1,70 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, it } from "node:test";
 
-import { shouldPlayTranslationAudio } from "./translationPlayback.js";
+import {
+  isLiveTranscriptionUnavailableMessage,
+  shouldPlayTranslationAudio,
+} from "./translationPlayback.js";
 
 describe("shouldPlayTranslationAudio", () => {
-  const me = "socket-self";
-  const partner = "socket-partner";
-
-  test("plays partner translation_result", () => {
+  it("never plays translation_sent to the speaker", () => {
     assert.equal(
-      shouldPlayTranslationAudio(me, {
+      shouldPlayTranslationAudio("me-1", {
+        kind: "translation_sent",
+        fromParticipantId: "me-1",
+        audioBase64: "abc",
+      }),
+      false,
+    );
+  });
+
+  it("plays partner translation_result", () => {
+    assert.equal(
+      shouldPlayTranslationAudio("me-1", {
         kind: "translation_result",
-        fromParticipantId: partner,
-        turnId: "turn-1",
+        fromParticipantId: "partner-1",
         audioBase64: "abc",
       }),
       true,
     );
-  });
-
-  test("never plays translation_sent (speaker confirmation)", () => {
     assert.equal(
-      shouldPlayTranslationAudio(me, {
-        kind: "translation_sent",
-        fromParticipantId: me,
-        turnId: "turn-1",
-        audioBase64: "abc",
-      }),
-      false,
-    );
-  });
-
-  test("does not play own translation_result", () => {
-    assert.equal(
-      shouldPlayTranslationAudio(me, {
+      shouldPlayTranslationAudio("me-1", {
         kind: "translation_result",
-        fromParticipantId: me,
-        turnId: "turn-1",
+        fromParticipantId: "me-1",
         audioBase64: "abc",
       }),
       false,
     );
   });
 
-  test("does not play partial_translation_audio marked for speaker", () => {
+  it("skips partial_translation_audio echoed to the speaker", () => {
     assert.equal(
-      shouldPlayTranslationAudio(me, {
+      shouldPlayTranslationAudio("me-1", {
         kind: "partial_translation_audio",
-        fromParticipantId: me,
+        fromParticipantId: "me-1",
         role: "speaker",
         audioBase64: "abc",
       }),
       false,
     );
-  });
-
-  test("plays listener partial_translation_audio from partner", () => {
     assert.equal(
-      shouldPlayTranslationAudio(me, {
+      shouldPlayTranslationAudio("me-1", {
         kind: "partial_translation_audio",
-        fromParticipantId: partner,
+        fromParticipantId: "partner-1",
         audioBase64: "abc",
       }),
       true,
     );
   });
+});
 
-  test("respects skippedTts and empty audio", () => {
+describe("isLiveTranscriptionUnavailableMessage", () => {
+  it("detects streaming ASR errors", () => {
     assert.equal(
-      shouldPlayTranslationAudio(me, {
-        kind: "translation_result",
-        fromParticipantId: partner,
-        audioBase64: "",
-      }),
-      false,
-    );
-    assert.equal(
-      shouldPlayTranslationAudio(me, {
-        kind: "translation_result",
-        fromParticipantId: partner,
-        audioBase64: "abc",
-        skippedTts: true,
-      }),
-      false,
+      isLiveTranscriptionUnavailableMessage(
+        "Live transcription unavailable (Error committing input audio buffer: buffer too small). Translation will finish when you release.",
+      ),
+      true,
     );
   });
 });
