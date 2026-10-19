@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped** — internal dogfood + CI; **external beta blocked on domain + email OTP** when ready)
+**Last updated:** October 2026 (**v1.4 shipped**; **v1.5 internal polish done** — dogfood passed; **external beta** when you want outsiders + a domain)
 
 ---
 
@@ -25,7 +25,7 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 | **v1.2** — Real voice on translated speech (ElevenLabs IVC) | ✅ Shipped |
 | **v1.3** — Auto-detect spoken language; Translate-to UX; voice preview | ✅ Shipped |
 | **v1.4** — Signed-in profiles; voice sync; welcome/guest entry | ✅ Shipped |
-| **v1.5** — Internal polish (dogfood); **external beta** later (domain + Resend + EAS) | 📋 Next |
+| **v1.5** — Internal polish ✅; **external beta** (domain + Resend + EAS) when ready | 📋 Next |
 
 **Deployed:** Railway (`voice-bridge-production-c537.up.railway.app`)
 
@@ -75,12 +75,12 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 
 ---
 
-## v1.5 internal polish (**now — household / dev OTP only**)
+## v1.5 internal polish (shipped — household / dev OTP only)
 
 No domain or Resend required. Production keeps **`AUTH_DEV_RETURN_OTP=true`** so sign-in codes appear in the app (fine for you and anyone beside you while testing).
 
 - [x] **CI green:** fix flaky `join-room.integration.test.ts` so GitHub `check` is trustworthy on every push
-- [ ] **Dogfood pass:** two devices + web with **signed-in** accounts — Translate to, gender, and **cloned voice** all consistent across devices
+- [x] **Dogfood pass:** two devices + web with **signed-in** accounts — Translate to, gender, and **cloned voice** all consistent across devices
 - [x] **Railway / Supabase checklist:** `DATABASE_URL`, `AUTH_JWT_SECRET`, rate limits, health smoke test documented for operators (see README **Production operator checklist**)
 
 **Do not do yet:** real inbox OTP, turning off dev codes, or inviting strangers — that waits for **External beta readiness** below.
