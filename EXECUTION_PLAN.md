@@ -80,9 +80,9 @@ Living plan for v1.x delivery. Updated when we change provider or scope.
 Complete voice sync first; then harden what external beta users will hit.
 
 - [ ] **Real email OTP:** Resend — `RESEND_API_KEY` + `AUTH_FROM_EMAIL` on Railway; set `AUTH_DEV_RETURN_OTP=false`
-- [ ] **CI green:** fix flaky `join-room.integration.test.ts` so GitHub `check` is trustworthy on every push
+- [x] **CI green:** fix flaky `join-room.integration.test.ts` so GitHub `check` is trustworthy on every push
 - [ ] **Dogfood pass:** two devices + web with **signed-in** accounts — Translate to, gender, and **cloned voice** all consistent across devices
-- [ ] **Railway / Supabase checklist:** `DATABASE_URL`, `AUTH_JWT_SECRET`, rate limits, health smoke test documented for operators
+- [x] **Railway / Supabase checklist:** `DATABASE_URL`, `AUTH_JWT_SECRET`, rate limits, health smoke test documented for operators (see README **Production operator checklist**)
 
 ---
 

@@ -95,6 +95,59 @@ async function startTestServer(): Promise<{
   };
 }
 
+async function connectClient(url: string): Promise<ClientSocket> {
+  const socket = createClient(url, {
+    transports: ["websocket"],
+    forceNew: true,
+  });
+  await waitForEvent(socket, "connect");
+  return socket;
+}
+
+function emitJoinRoom(
+  socket: ClientSocket,
+  roomCode: string,
+  speakLang: string,
+): void {
+  socket.emit("join_room", {
+    roomCode,
+    speakLang,
+    hearLang: speakLang,
+    speakerGender: "female",
+  });
+}
+
+function waitForAtLeastParticipants(
+  socket: ClientSocket,
+  count: number,
+  timeoutMs = 10_000,
+): Promise<JoinedRoomPayload> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${count} participants`));
+    }, timeoutMs);
+
+    const handler = (payload: JoinedRoomPayload) => {
+      if (payload.participants >= count) {
+        cleanup();
+        resolve(payload);
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("participant_joined", handler);
+      socket.off("participants_sync", handler);
+      socket.off("joined_room", handler);
+    };
+
+    socket.on("participant_joined", handler);
+    socket.on("participants_sync", handler);
+    socket.on("joined_room", handler);
+  });
+}
+
 async function joinRoom(
   url: string,
   roomCode: string,
@@ -104,20 +157,10 @@ async function joinRoom(
   joined: JoinedRoomPayload;
   disconnect: () => void;
 }> {
-  const socket = createClient(url, {
-    transports: ["websocket"],
-    forceNew: true,
-  });
-
-  await waitForEvent(socket, "connect");
+  const socket = await connectClient(url);
 
   const joinedPromise = waitForEvent<JoinedRoomPayload>(socket, "joined_room");
-  socket.emit("join_room", {
-    roomCode,
-    speakLang,
-    hearLang: speakLang,
-    speakerGender: "female",
-  });
+  emitJoinRoom(socket, roomCode, speakLang);
 
   const joined = await joinedPromise;
   return { socket, joined, disconnect: () => socket.disconnect() };
@@ -215,23 +258,27 @@ test("concurrent joins still converge to two participants", async () => {
   const clients: Array<() => void> = [];
 
   try {
-    const [{ socket: first, joined: firstJoined, disconnect: disconnectFirst }, { joined: secondJoined, disconnect: disconnectSecond }] =
-      await Promise.all([
-        joinRoom(server.url, roomCode, "en"),
-        joinRoom(server.url, roomCode, "he"),
-      ]);
-    clients.push(disconnectFirst, disconnectSecond);
+    const [first, second] = await Promise.all([
+      connectClient(server.url),
+      connectClient(server.url),
+    ]);
+    clients.push(
+      () => first.disconnect(),
+      () => second.disconnect(),
+    );
 
-    const counts = [firstJoined.participants, secondJoined.participants];
-    assert.equal(Math.max(...counts), 2);
+    const firstSeesTwo = waitForAtLeastParticipants(first, 2);
+    const secondSeesTwo = waitForAtLeastParticipants(second, 2);
 
-    if (firstJoined.participants < 2) {
-      const firstUpdate = await Promise.race([
-        waitForEvent<JoinedRoomPayload>(first, "participant_joined", 10_000),
-        waitForEvent<JoinedRoomPayload>(first, "participants_sync", 10_000),
-      ]);
-      assert.equal(firstUpdate.participants, 2);
-    }
+    emitJoinRoom(first, roomCode, "en");
+    emitJoinRoom(second, roomCode, "he");
+
+    const [firstUpdate, secondUpdate] = await Promise.all([
+      firstSeesTwo,
+      secondSeesTwo,
+    ]);
+    assert.equal(firstUpdate.participants, 2);
+    assert.equal(secondUpdate.participants, 2);
   } finally {
     for (const disconnect of clients) {
       disconnect();

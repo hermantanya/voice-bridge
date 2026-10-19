@@ -245,7 +245,25 @@ The mobile app connects to your Railway deployment. If someone learns that URL, 
 
 Set these in Railway Variables. For personal use, defaults are plenty. Tighten if needed.
 
-**Optional later:** user auth, per-room tokens, or requiring everyone to self-host their own Railway backend.
+### Production operator checklist (Railway + Supabase)
+
+Use this after deploy or when rotating secrets. Production URL example: `https://voice-bridge-production-c537.up.railway.app`.
+
+| Check | Variable / action | Notes |
+|---|---|---|
+| Server up | `GET /health` | Expect `"status":"ok"` and `"version"` matching [package.json](package.json) |
+| Database | `DATABASE_URL` | Supabase **Session pooler** URI (TLS); accounts live in Postgres |
+| Auth signing | `AUTH_JWT_SECRET` | Long random string; changing it signs everyone out |
+| OpenAI | `OPENAI_API_KEY` | STT + translation |
+| ElevenLabs | `ELEVENLABS_API_KEY` | Voice enroll + cloned TTS |
+| CORS / WebSocket | `CLIENT_ORIGIN` | `*` for dev; restrict to your web origin when you have a fixed domain |
+| OTP email (beta+) | `RESEND_API_KEY`, `AUTH_FROM_EMAIL` | Required before external testers |
+| Dev OTP on screen | `AUTH_DEV_RETURN_OTP` | `true` only for your own testing; **`false`** before external beta |
+| Mobile app | `apps/mobile/.env` | `EXPO_PUBLIC_API_URL` → your Railway HTTPS URL (gitignored) |
+
+**Smoke test (2 min):** `/health` → mobile sign-in (OTP) → change Translate to on device A → open Settings on device B and confirm sync within a few seconds → create/join a room with two participants.
+
+**Optional later:** per-room tokens, or requiring everyone to self-host their own Railway backend.
 
 ## Known limitations (v1.4)
 
