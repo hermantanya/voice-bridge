@@ -1,14 +1,40 @@
+import type { ConversationMode } from "../config";
+
+import { isHandsFreeComingSoon } from "./conversationMode";
+
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 export type TurnPhase = "waiting" | "speaking" | "processing";
+
+/** Phase 1: unmuted = allowed to use hold-to-talk (not hands-free yet). */
+export function getSelfMicLabel(isSelfMuted: boolean): string {
+  return isSelfMuted ? "Mic off" : "Mic on";
+}
+
+export function getSelfMicHint(
+  isSelfMuted: boolean,
+  conversationMode: ConversationMode = "push_to_talk",
+): string {
+  if (isSelfMuted) {
+    return "Muted — tap Unmute, then hold to talk.";
+  }
+  if (isHandsFreeComingSoon(conversationMode)) {
+    return "Hands-free is coming soon — hold the button while you speak.";
+  }
+  return "Push-to-talk — hold the button while you speak.";
+}
 
 export function getTurnLabel(input: {
   participants: number;
   isProcessing: boolean;
   isMyTurn: boolean;
   isOpenTurn: boolean;
+  isSelfMuted?: boolean;
 }): string {
   if (input.participants < 2) {
     return "Waiting for partner";
+  }
+  if (input.isSelfMuted) {
+    return "Mic off";
   }
   if (input.isProcessing) {
     return "Translating...";
@@ -29,10 +55,12 @@ export function canStartTalking(input: {
   isRecording: boolean;
   isOpenTurn: boolean;
   isMyTurn: boolean;
+  isSelfMuted?: boolean;
 }): boolean {
   return (
     input.status === "connected" &&
     input.participants > 1 &&
+    !input.isSelfMuted &&
     !input.isProcessing &&
     !input.isRecording &&
     (input.isOpenTurn || input.isMyTurn)

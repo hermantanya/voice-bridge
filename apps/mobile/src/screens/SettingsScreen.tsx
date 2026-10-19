@@ -11,11 +11,14 @@ import {
 
 import { previewEnrolledVoice } from "../api/enrollVoice";
 import {
+  CONVERSATION_MODES,
   LANGUAGES,
   SPEAKER_GENDERS,
+  type ConversationMode,
   type LanguageCode,
   type SpeakerGender,
 } from "../config";
+import { isHandsFreeComingSoon } from "../session/conversationMode";
 import { voiceProfileLabel, type VoiceProfileStatus } from "../session/appState";
 import { playVoicePreviewAudio } from "../session/voicePreviewPlayback";
 import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevices";
@@ -23,9 +26,11 @@ import { isRemotePhoneMic, type MicrophoneDevice } from "../web/microphoneDevice
 type SettingsScreenProps = {
   myLang: LanguageCode;
   speakerGender: SpeakerGender;
+  conversationMode: ConversationMode;
   onCommitProfileSettings?: (settings: {
     hearLang: LanguageCode;
     speakerGender: SpeakerGender;
+    conversationMode: ConversationMode;
   }) => void;
   voiceStatus: VoiceProfileStatus;
   elevenlabsVoiceId?: string | null;
@@ -49,6 +54,7 @@ type SettingsScreenProps = {
 export function SettingsScreen({
   myLang,
   speakerGender,
+  conversationMode,
   onCommitProfileSettings,
   voiceStatus,
   elevenlabsVoiceId,
@@ -73,10 +79,16 @@ export function SettingsScreen({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [draftLang, setDraftLang] = useState(myLang);
   const [draftGender, setDraftGender] = useState(speakerGender);
+  const [draftConversationMode, setDraftConversationMode] =
+    useState(conversationMode);
   const [draftMicrophoneId, setDraftMicrophoneId] = useState<string | null>(
     selectedMicrophoneId,
   );
-  const syncedProfileRef = useRef({ myLang, speakerGender });
+  const syncedProfileRef = useRef({
+    myLang,
+    speakerGender,
+    conversationMode,
+  });
 
   useEffect(() => {
     const prev = syncedProfileRef.current;
@@ -84,8 +96,11 @@ export function SettingsScreen({
     setDraftGender((draft) =>
       draft === prev.speakerGender ? speakerGender : draft,
     );
-    syncedProfileRef.current = { myLang, speakerGender };
-  }, [myLang, speakerGender]);
+    setDraftConversationMode((draft) =>
+      draft === prev.conversationMode ? conversationMode : draft,
+    );
+    syncedProfileRef.current = { myLang, speakerGender, conversationMode };
+  }, [conversationMode, myLang, speakerGender]);
 
   useEffect(() => {
     setPreviewText(null);
@@ -93,10 +108,15 @@ export function SettingsScreen({
   }, [elevenlabsVoiceId, draftLang, draftGender]);
 
   const handleSaveAndBack = () => {
-    if (draftLang !== myLang || draftGender !== speakerGender) {
+    if (
+      draftLang !== myLang ||
+      draftGender !== speakerGender ||
+      draftConversationMode !== conversationMode
+    ) {
       onCommitProfileSettings?.({
         hearLang: draftLang,
         speakerGender: draftGender,
+        conversationMode: draftConversationMode,
       });
     }
     if (
@@ -187,6 +207,53 @@ export function SettingsScreen({
             </Pressable>
           );
         })}
+      </View>
+
+      <Text style={[styles.title, styles.sectionTitle]}>Conversation mode</Text>
+      <Text style={styles.subtitle}>
+        How you speak in a session. Push-to-talk is available now; hands-free
+        will listen automatically when it ships.
+      </Text>
+
+      <View style={styles.card}>
+        {CONVERSATION_MODES.map((option) => {
+          const active = option.value === draftConversationMode;
+          return (
+            <Pressable
+              key={option.value}
+              style={[styles.option, active && styles.optionActive]}
+              onPress={() => setDraftConversationMode(option.value)}
+            >
+              <View style={styles.conversationOptionRow}>
+                <Text
+                  style={[
+                    styles.optionText,
+                    active && styles.optionTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                {option.value === "hands_free" ? (
+                  <Text style={styles.comingSoonBadge}>Coming soon</Text>
+                ) : null}
+              </View>
+              <Text
+                style={[
+                  styles.conversationOptionDescription,
+                  active && styles.conversationOptionDescriptionActive,
+                ]}
+              >
+                {option.description}
+              </Text>
+            </Pressable>
+          );
+        })}
+        {isHandsFreeComingSoon(draftConversationMode) ? (
+          <Text style={styles.conversationModeNote}>
+            Sessions still use push-to-talk until hands-free is enabled on this
+            device.
+          </Text>
+        ) : null}
       </View>
 
       <Text style={[styles.title, styles.sectionTitle]}>My gender</Text>
@@ -436,6 +503,35 @@ const styles = StyleSheet.create({
   },
   optionTextActive: {
     color: "#ffffff",
+  },
+  conversationOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  conversationOptionDescription: {
+    marginTop: 6,
+    color: "#64748b",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  conversationOptionDescriptionActive: {
+    color: "#dbeafe",
+  },
+  comingSoonBadge: {
+    color: "#fcd34d",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  conversationModeNote: {
+    color: "#94a3b8",
+    fontSize: 14,
+    lineHeight: 20,
   },
   statusRow: {
     flexDirection: "row",

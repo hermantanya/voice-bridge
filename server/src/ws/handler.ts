@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 
+import { validateAudioBuffer } from "../pipeline/audioFormat.js";
 import { runTranslationPipeline } from "../pipeline/index.js";
 import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import {
@@ -397,7 +398,28 @@ export function registerSocketHandlers(
       emitUsageUpdate(io, code, room);
 
       try {
-        const audio = Buffer.from(payload.audioBase64, "base64");
+        let audio: Buffer;
+        try {
+          audio = Buffer.from(payload.audioBase64, "base64");
+        } catch {
+          closeActivePipeline(room.activeConversation, socket.id);
+          emitUsageUpdate(io, code, room);
+          openTurnFloor(io, code, room);
+          socket.emit("error", {
+            message: "Invalid audio data. Try recording again.",
+          });
+          return;
+        }
+
+        const audioValidationMessage = validateAudioBuffer(audio);
+        if (audioValidationMessage) {
+          closeActivePipeline(room.activeConversation, socket.id);
+          emitUsageUpdate(io, code, room);
+          openTurnFloor(io, code, room);
+          socket.emit("error", { message: audioValidationMessage });
+          return;
+        }
+
         const socketsInRoom = await io.in(code).fetchSockets();
         const listener = socketsInRoom.find((s) => s.id !== socket.id);
         const targetLang = listener

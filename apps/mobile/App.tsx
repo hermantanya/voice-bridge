@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform, SafeAreaView, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
-import type { LanguageCode, SpeakerGender } from "./src/config";
+import type {
+  ConversationMode,
+  LanguageCode,
+  SpeakerGender,
+} from "./src/config";
 import { useAudio } from "./src/hooks/useAudio";
 import { useAuth } from "./src/hooks/useAuth";
-import { useSocket } from "./src/hooks/useSocket";
+import { useSocket, type TranslationResult } from "./src/hooks/useSocket";
 import { useVoiceProfile } from "./src/hooks/useVoiceProfile";
 import {
   loadDevicePrefs,
@@ -42,6 +46,8 @@ export default function App() {
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [myLang, setMyLang] = useState<LanguageCode>("en");
   const [speakerGender, setSpeakerGender] = useState<SpeakerGender>("female");
+  const [conversationMode, setConversationMode] =
+    useState<ConversationMode>("push_to_talk");
   const [homeResetKey, setHomeResetKey] = useState(0);
   const [devicePrefsLoaded, setDevicePrefsLoaded] = useState(false);
   const [entryReady, setEntryReady] = useState(false);
@@ -73,6 +79,7 @@ export default function App() {
       if (prefs) {
         setMyLang(prefs.hearLang);
         setSpeakerGender(prefs.speakerGender);
+        setConversationMode(prefs.conversationMode);
       }
       setIsGuest(guest);
       setEntryReady(true);
@@ -196,9 +203,14 @@ export default function App() {
   }, [auth.session, auth.updateProfile, voiceProfile.removeElevenLabsVoice]);
 
   const handleCommitProfileSettings = useCallback(
-    (settings: { hearLang: LanguageCode; speakerGender: SpeakerGender }) => {
+    (settings: {
+      hearLang: LanguageCode;
+      speakerGender: SpeakerGender;
+      conversationMode: ConversationMode;
+    }) => {
       setMyLang(settings.hearLang);
       setSpeakerGender(settings.speakerGender);
+      setConversationMode(settings.conversationMode);
       if (auth.session) {
         void auth
           .updateProfile({
@@ -208,11 +220,11 @@ export default function App() {
           .catch((error) => {
             console.warn("Could not sync profile settings:", error);
           });
-        return;
       }
       void saveDevicePrefs({
         hearLang: settings.hearLang,
         speakerGender: settings.speakerGender,
+        conversationMode: settings.conversationMode,
       });
     },
     [auth.session, auth.updateProfile],
@@ -227,9 +239,11 @@ export default function App() {
     if (prefs) {
       setMyLang(prefs.hearLang);
       setSpeakerGender(prefs.speakerGender);
+      setConversationMode(prefs.conversationMode);
     } else {
       setMyLang("en");
       setSpeakerGender("female");
+      setConversationMode("push_to_talk");
     }
     setScreen("welcome");
   }, [auth.signOut, voiceProfile.setElevenLabsVoiceId]);
@@ -305,12 +319,14 @@ export default function App() {
     [auth.signInWithOtp, authMode, finishAuthSuccess],
   );
 
-  const handleIncomingTranslation = useCallback(
-    (result: { audioBase64: string }) => {
-      void playAudioRef.current(result.audioBase64);
-    },
-    [],
-  );
+  const handleIncomingTranslation = useCallback((result: TranslationResult) => {
+    if (result.skippedTts || !result.audioBase64.trim()) {
+      return;
+    }
+    void playAudioRef.current(result.audioBase64).catch((error) => {
+      console.warn("Could not play incoming translation:", error);
+    });
+  }, []);
 
   const socket = useSocket({
     roomCode: activeRoomCode,
@@ -347,6 +363,14 @@ export default function App() {
     playAudioRef.current = audio.playAudioBase64;
   }, [audio.playAudioBase64]);
 
+  const handleStopRecording = useCallback(async () => {
+    const delivered = await audio.stopRecording();
+    if (!delivered) {
+      await socket.releaseTurn();
+    }
+    return delivered;
+  }, [audio.stopRecording, socket.releaseTurn]);
+
   const handleStartRecording = useCallback(
     async (stillHolding: () => boolean) => {
       holdStartedAtRef.current = Date.now();
@@ -355,7 +379,7 @@ export default function App() {
         claimTurn: socket.claimTurn,
         releaseTurn: socket.releaseTurn,
         startRecording: audio.startRecording,
-        stopRecording: audio.stopRecording,
+        stopRecording: handleStopRecording,
       });
 
       if (result === "denied") {
@@ -366,7 +390,12 @@ export default function App() {
         holdStartedAtRef.current = null;
       }
     },
-    [audio.startRecording, audio.stopRecording, socket.claimTurn, socket.releaseTurn],
+    [
+      audio.startRecording,
+      handleStopRecording,
+      socket.claimTurn,
+      socket.releaseTurn,
+    ],
   );
 
   useEffect(() => {
@@ -381,14 +410,24 @@ export default function App() {
       return;
     }
 
-    void audio.stopRecording();
+    void handleStopRecording();
   }, [
     audio.isRecording,
-    audio.stopRecording,
+    handleStopRecording,
     inSession,
     socket.isMyTurn,
     socket.isOpenTurn,
   ]);
+
+  const handleEndSpeaking = useCallback(async () => {
+    let delivered = false;
+    if (audio.isRecording) {
+      delivered = await audio.stopRecording();
+    }
+    if (!delivered) {
+      await socket.releaseTurn();
+    }
+  }, [audio.isRecording, audio.stopRecording, socket.releaseTurn]);
 
   const handleLeaveSession = useCallback(() => {
     audio.releaseMicrophone();
@@ -443,6 +482,7 @@ export default function App() {
         <SettingsScreen
           myLang={myLang}
           speakerGender={speakerGender}
+          conversationMode={conversationMode}
           onCommitProfileSettings={handleCommitProfileSettings}
           voiceStatus={voiceProfile.voiceStatus}
           elevenlabsVoiceId={voiceProfile.elevenlabsVoiceId}
@@ -469,6 +509,7 @@ export default function App() {
         <SessionScreen
           roomCode={activeRoomCode}
           myLang={myLang}
+          conversationMode={conversationMode}
           partnerLang={socket.partnerLang}
           voiceStatus={voiceProfile.voiceStatus}
           lastReceived={socket.lastReceived}
@@ -488,7 +529,8 @@ export default function App() {
           partnerBillableMs={socket.partnerBillableMs}
           sessionStartedAt={socket.sessionStartedAt}
           onStartRecording={handleStartRecording}
-          onStopRecording={audio.stopRecording}
+          onStopRecording={handleStopRecording}
+          onEndSpeaking={handleEndSpeaking}
           onLeave={handleLeaveSession}
         />
       );
@@ -527,8 +569,10 @@ export default function App() {
     audio.releaseMicrophone,
     audio.selectedDeviceId,
     audio.setSelectedDeviceId,
-    audio.stopRecording,
+    handleStopRecording,
+    handleEndSpeaking,
     handleLeaveSession,
+    conversationMode,
     handleCommitProfileSettings,
     handleRemoveVoice,
     handleSignOut,
