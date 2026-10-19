@@ -5,7 +5,10 @@ import { io as createClient, type Socket as ClientSocket } from "socket.io-clien
 import { Server } from "socket.io";
 
 import type { PipelineInput, PipelineResult } from "../pipeline/index.js";
-import { createMockRealtimeTranscriptionSession } from "../streaming/realtimeTranscriptionSession.js";
+import {
+  buildSessionUpdate,
+  createMockRealtimeTranscriptionSession,
+} from "../streaming/realtimeTranscriptionSession.js";
 import {
   createDefaultSocketHandlerDeps,
   registerSocketHandlers,
@@ -57,6 +60,30 @@ function buildWavWithPcm(pcmBytes: number): Buffer {
 }
 
 const VALID_TEST_AUDIO = buildWavWithPcm(1600);
+
+test("realtime transcription mock uses GA session.update shape", () => {
+  const payload = buildSessionUpdate("en") as {
+    type?: string;
+    session?: {
+      type?: string;
+      audio?: {
+        input?: {
+          format?: { type?: string; rate?: number };
+          transcription?: { model?: string; language?: string };
+          turn_detection?: { type?: string };
+        };
+      };
+    };
+  };
+
+  assert.equal(payload.type, "session.update");
+  assert.equal(payload.session?.type, "transcription");
+  assert.equal(payload.session?.audio?.input?.format?.type, "audio/pcm");
+  assert.equal(payload.session?.audio?.input?.format?.rate, 24_000);
+  assert.equal(payload.session?.audio?.input?.turn_detection?.type, "server_vad");
+  assert.equal(payload.session?.audio?.input?.transcription?.model, "gpt-4o-transcribe");
+  assert.equal(payload.session?.audio?.input?.transcription?.language, "en");
+});
 
 function createMockPipeline(): TranslationPipelineRunner {
   return async (input: PipelineInput): Promise<PipelineResult> => {

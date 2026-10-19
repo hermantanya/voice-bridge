@@ -26,7 +26,8 @@ export type RealtimeTranscriptionSessionFactory = (
   sourceLangHint?: string,
 ) => RealtimeTranscriptionSession;
 
-function buildSessionUpdate(language?: string): object {
+/** GA Realtime API session.update for transcription-only sessions. */
+export function buildSessionUpdate(language?: string): object {
   const transcription: Record<string, string> = {
     model: process.env.STREAMING_PTT_TRANSCRIBE_MODEL ?? "gpt-4o-transcribe",
   };
@@ -35,16 +36,24 @@ function buildSessionUpdate(language?: string): object {
   }
 
   return {
-    type: "transcription_session.update",
+    type: "session.update",
     session: {
-      input_audio_format: "pcm16",
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 450,
+      type: "transcription",
+      audio: {
+        input: {
+          format: {
+            type: "audio/pcm",
+            rate: 24_000,
+          },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 450,
+          },
+          transcription,
+        },
       },
-      input_audio_transcription: transcription,
     },
   };
 }
@@ -73,7 +82,6 @@ export function createOpenAIRealtimeTranscriptionSession(
   const ws = new WebSocket(REALTIME_TRANSCRIPTION_URL, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "OpenAI-Beta": "realtime=v1",
     },
   });
 
