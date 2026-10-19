@@ -4,7 +4,7 @@ import test from "node:test";
 import { io as createClient, type Socket as ClientSocket } from "socket.io-client";
 import { Server } from "socket.io";
 
-import { registerSocketHandlers } from "./handler.js";
+import { registerSocketHandlers, resetRoomsForTests } from "./handler.js";
 import { createSocketRateLimits } from "./rateLimit.js";
 
 type JoinedRoomPayload = {
@@ -175,6 +175,7 @@ async function joinRoom(
 }
 
 test("two clients joining the same room both end up with two participants", async () => {
+  resetRoomsForTests();
   const server = await startTestServer();
   const roomCode = "TEST01";
   const clients: Array<() => void> = [];
@@ -206,6 +207,7 @@ test("two clients joining the same room both end up with two participants", asyn
 });
 
 test("release_turn reopens the floor for the current speaker", async () => {
+  resetRoomsForTests();
   const server = await startTestServer();
   const roomCode = "REL01";
   const clients: Array<() => void> = [];
@@ -258,6 +260,7 @@ test("release_turn reopens the floor for the current speaker", async () => {
 });
 
 test("concurrent joins still converge to two participants", async () => {
+  resetRoomsForTests();
   const server = await startTestServer();
   const roomCode = "RACE01";
   const clients: Array<() => void> = [];
@@ -293,6 +296,7 @@ test("concurrent joins still converge to two participants", async () => {
 });
 
 test("audio_chunk rejects tiny payload before translation", async () => {
+  resetRoomsForTests();
   const server = await startTestServer();
   const roomCode = "AUD01";
   const clients: Array<() => void> = [];

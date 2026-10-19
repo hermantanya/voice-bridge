@@ -4,7 +4,15 @@ import {
   validateAudioBuffer,
   validateRecordingDurationMs,
 } from "../pipeline/audioFormat.js";
-import { runTranslationPipeline } from "../pipeline/index.js";
+import {
+  runTranslationPipeline,
+  type PipelineResult,
+} from "../pipeline/index.js";
+import {
+  DEFAULT_CONVERSATION_MODE,
+  parseConversationMode,
+  type ConversationMode,
+} from "./conversationMode.js";
 import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import {
   closeActivePipeline,
@@ -28,7 +36,18 @@ type JoinRoomPayload = {
   speakLangOverride?: string;
   speakerGender?: "female" | "male";
   elevenlabsVoiceId?: string;
+  conversationMode?: ConversationMode;
 };
+
+export type TranslationPipelineRunner = typeof runTranslationPipeline;
+
+export type SocketHandlerDeps = {
+  runTranslationPipeline: TranslationPipelineRunner;
+};
+
+export function createDefaultSocketHandlerDeps(): SocketHandlerDeps {
+  return { runTranslationPipeline };
+}
 
 type AudioChunkPayload = {
   audioBase64: string;
@@ -58,6 +77,11 @@ type RoomState = {
 };
 
 const rooms = new Map<string, RoomState>();
+
+/** Clears in-memory room state (integration tests only). */
+export function resetRoomsForTests(): void {
+  rooms.clear();
+}
 
 function createRoomState(): RoomState {
   return {
@@ -173,10 +197,166 @@ function emitUsageUpdate(io: Server, roomCode: string, room: RoomState): void {
   });
 }
 
+type SpeechRouting = "push_to_talk" | "hands_free";
+
+async function processSpeechPayload(
+  io: Server,
+  socket: Socket,
+  room: RoomState,
+  code: string,
+  payload: AudioChunkPayload,
+  routing: SpeechRouting,
+  runPipeline: TranslationPipelineRunner,
+): Promise<void> {
+  if (routing === "push_to_talk") {
+    if (room.phase !== "speaking" || room.turnParticipantId !== socket.id) {
+      socket.emit("error", { message: "Not your turn" });
+      return;
+    }
+  }
+
+  const speechMs = Math.max(
+    0,
+    Math.round(payload.recordingDurationMs ?? 0),
+  );
+
+  let audio: Buffer;
+  try {
+    audio = Buffer.from(payload.audioBase64, "base64");
+  } catch {
+    if (routing === "push_to_talk") {
+      openTurnFloor(io, code, room);
+    }
+    socket.emit("error", {
+      message: "Invalid audio data. Try recording again.",
+    });
+    return;
+  }
+
+  const audioValidationMessage = validateAudioBuffer(audio);
+  const durationValidationMessage = validateRecordingDurationMs(speechMs);
+  if (audioValidationMessage || durationValidationMessage) {
+    if (routing === "push_to_talk") {
+      openTurnFloor(io, code, room);
+    }
+    socket.emit("error", {
+      message: audioValidationMessage ?? durationValidationMessage!,
+    });
+    return;
+  }
+
+  if (routing === "push_to_talk") {
+    room.phase = "processing";
+  }
+
+  const pipelineStartMs = resolvePipelineStartMs(
+    payload.recordingStartedAt,
+    speechMs,
+  );
+
+  startActivePipeline(room.activeConversation, socket.id, pipelineStartMs);
+  if (routing === "push_to_talk") {
+    emitTurnState(io, code, room);
+  }
+  emitUsageUpdate(io, code, room);
+
+  try {
+    const socketsInRoom = await io.in(code).fetchSockets();
+    const listener = socketsInRoom.find((s) => s.id !== socket.id);
+    const targetLang = listener
+      ? resolveTargetLanguage(listener.data.hearLang as string | undefined)
+      : resolveTargetLanguage(payload.targetLang);
+
+    const speakerGender = socket.data.speakerGender as
+      | "female"
+      | "male"
+      | undefined;
+    const addresseeGender = listener?.data.speakerGender as
+      | "female"
+      | "male"
+      | undefined;
+
+    const sourceLangOverride = socket.data.speakLangOverride as
+      | string
+      | undefined;
+
+    const speakerVoiceId = socket.data.elevenlabsVoiceId as string | undefined;
+
+    const result: PipelineResult = await runPipeline({
+      audio,
+      targetLang,
+      format: payload.format ?? "webm",
+      sourceLangOverride,
+      speakerGender,
+      addresseeGender,
+      voiceId: speakerVoiceId,
+    });
+
+    const usedClonedVoice =
+      !result.skippedTts &&
+      Boolean(speakerVoiceId?.trim()) &&
+      result.audio.length > 0;
+
+    const turnActiveMs = speechMs + result.latencyMs;
+    closeActivePipeline(room.activeConversation, socket.id);
+    recordParticipantTurnUsage(room, socket.id, turnActiveMs);
+    const usage = buildUsagePayload(room);
+
+    const translationBase = {
+      roomCode: code,
+      fromParticipantId: socket.id,
+      sourceLang: result.sourceLang,
+      targetLang: result.targetLang,
+      sourceText: result.sourceText,
+      translatedText: result.translatedText,
+      audioBase64: result.audio.toString("base64"),
+      audioFormat: result.audioFormat,
+      latencyMs: result.latencyMs,
+      skippedTts: result.skippedTts ?? false,
+      usedClonedVoice,
+      turnActiveMs,
+      routing,
+      ...usage,
+    };
+
+    emitUsageUpdate(io, code, room);
+
+    socket.to(code).emit("translation_result", translationBase);
+    socket.emit("translation_sent", {
+      ...translationBase,
+      myBillableMs: room.participantBillableMs.get(socket.id) ?? 0,
+    });
+
+    if (routing === "push_to_talk") {
+      openTurnFloor(io, code, room);
+    }
+  } catch (error) {
+    console.error(`speech payload error for ${socket.id}:`, error);
+
+    closeActivePipeline(room.activeConversation, socket.id);
+    emitUsageUpdate(io, code, room);
+
+    if (routing === "push_to_talk") {
+      openTurnFloor(io, code, room);
+    }
+
+    socket.emit("error", {
+      message: error instanceof Error ? error.message : "Translation failed",
+    });
+  }
+}
+
+function getSocketConversationMode(socket: Socket): ConversationMode {
+  const mode = socket.data.conversationMode as ConversationMode | undefined;
+  return mode ?? DEFAULT_CONVERSATION_MODE;
+}
+
 export function registerSocketHandlers(
   io: Server,
   rateLimits: SocketRateLimits,
+  deps: SocketHandlerDeps = createDefaultSocketHandlerDeps(),
 ): void {
+  const { runTranslationPipeline: runPipeline } = deps;
   io.on("connection", (socket: Socket) => {
     console.log(`client connected: ${socket.id}`);
 
@@ -188,10 +368,19 @@ export function registerSocketHandlers(
         speakLangOverride,
         speakerGender,
         elevenlabsVoiceId,
+        conversationMode: conversationModeRaw,
       } = payload;
 
       if (!roomCode?.trim()) {
         socket.emit("error", { message: "roomCode is required" });
+        return;
+      }
+
+      const conversationMode = parseConversationMode(conversationModeRaw);
+      if (!conversationMode) {
+        socket.emit("error", {
+          message: "conversationMode must be push_to_talk or hands_free",
+        });
         return;
       }
 
@@ -233,6 +422,7 @@ export function registerSocketHandlers(
       } else {
         delete socket.data.elevenlabsVoiceId;
       }
+      socket.data.conversationMode = conversationMode;
 
       ensureSessionStarted(room);
 
@@ -255,6 +445,7 @@ export function registerSocketHandlers(
         participants,
         myLang: translateToLang,
         partnerLang: partnerTranslateTo,
+        conversationMode,
         turnState,
         ...buildUsagePayload(room),
       });
@@ -355,7 +546,10 @@ export function registerSocketHandlers(
       callback?.({ ok: true });
     });
 
-    socket.on("audio_chunk", async (payload: AudioChunkPayload) => {
+    async function handleSpeechEvent(
+      payload: AudioChunkPayload,
+      routing: SpeechRouting,
+    ): Promise<void> {
       const code = socket.data.roomCode as string | undefined;
 
       if (!code) {
@@ -380,126 +574,30 @@ export function registerSocketHandlers(
         return;
       }
 
-      if (room.phase !== "speaking" || room.turnParticipantId !== socket.id) {
-        socket.emit("error", { message: "Not your turn" });
-        return;
-      }
-
-      const speechMs = Math.max(
-        0,
-        Math.round(payload.recordingDurationMs ?? 0),
+      await processSpeechPayload(
+        io,
+        socket,
+        room,
+        code,
+        payload,
+        routing,
+        runPipeline,
       );
+    }
 
-      let audio: Buffer;
-      try {
-        audio = Buffer.from(payload.audioBase64, "base64");
-      } catch {
-        openTurnFloor(io, code, room);
+    socket.on("audio_chunk", (payload: AudioChunkPayload) => {
+      void handleSpeechEvent(payload, "push_to_talk");
+    });
+
+    socket.on("utterance", (payload: AudioChunkPayload) => {
+      if (getSocketConversationMode(socket) !== "hands_free") {
         socket.emit("error", {
-          message: "Invalid audio data. Try recording again.",
+          message: "Utterances require hands-free conversation mode",
         });
         return;
       }
 
-      const audioValidationMessage = validateAudioBuffer(audio);
-      const durationValidationMessage = validateRecordingDurationMs(speechMs);
-      if (audioValidationMessage || durationValidationMessage) {
-        openTurnFloor(io, code, room);
-        socket.emit("error", {
-          message: audioValidationMessage ?? durationValidationMessage!,
-        });
-        return;
-      }
-
-      room.phase = "processing";
-
-      const pipelineStartMs = resolvePipelineStartMs(
-        payload.recordingStartedAt,
-        speechMs,
-      );
-
-      startActivePipeline(room.activeConversation, socket.id, pipelineStartMs);
-      emitTurnState(io, code, room);
-      emitUsageUpdate(io, code, room);
-
-      try {
-        const socketsInRoom = await io.in(code).fetchSockets();
-        const listener = socketsInRoom.find((s) => s.id !== socket.id);
-        const targetLang = listener
-          ? resolveTargetLanguage(listener.data.hearLang as string | undefined)
-          : resolveTargetLanguage(payload.targetLang);
-
-        const speakerGender = socket.data.speakerGender as
-          | "female"
-          | "male"
-          | undefined;
-        const addresseeGender = listener?.data.speakerGender as
-          | "female"
-          | "male"
-          | undefined;
-
-        const sourceLangOverride = socket.data.speakLangOverride as
-          | string
-          | undefined;
-
-        const speakerVoiceId = socket.data.elevenlabsVoiceId as string | undefined;
-
-        const result = await runTranslationPipeline({
-          audio,
-          targetLang,
-          format: payload.format ?? "webm",
-          sourceLangOverride,
-          speakerGender,
-          addresseeGender,
-          voiceId: speakerVoiceId,
-        });
-
-        const usedClonedVoice =
-          !result.skippedTts &&
-          Boolean(speakerVoiceId?.trim()) &&
-          result.audio.length > 0;
-
-        const turnActiveMs = speechMs + result.latencyMs;
-        closeActivePipeline(room.activeConversation, socket.id);
-        recordParticipantTurnUsage(room, socket.id, turnActiveMs);
-        const usage = buildUsagePayload(room);
-
-        const translationBase = {
-          roomCode: code,
-          fromParticipantId: socket.id,
-          sourceLang: result.sourceLang,
-          targetLang: result.targetLang,
-          sourceText: result.sourceText,
-          translatedText: result.translatedText,
-          audioBase64: result.audio.toString("base64"),
-          audioFormat: result.audioFormat,
-          latencyMs: result.latencyMs,
-          skippedTts: result.skippedTts ?? false,
-          usedClonedVoice,
-          turnActiveMs,
-          ...usage,
-        };
-
-        emitUsageUpdate(io, code, room);
-
-        socket.to(code).emit("translation_result", translationBase);
-        socket.emit("translation_sent", {
-          ...translationBase,
-          myBillableMs: room.participantBillableMs.get(socket.id) ?? 0,
-        });
-        openTurnFloor(io, code, room);
-      } catch (error) {
-        console.error(`audio_chunk error for ${socket.id}:`, error);
-
-        closeActivePipeline(room.activeConversation, socket.id);
-        emitUsageUpdate(io, code, room);
-
-        openTurnFloor(io, code, room);
-
-        socket.emit("error", {
-          message: error instanceof Error ? error.message : "Translation failed",
-        });
-      }
+      void handleSpeechEvent(payload, "hands_free");
     });
 
     socket.on("disconnect", () => {

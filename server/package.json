@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 src/db/pgConfig.test.ts src/ws/roomParticipants.test.ts src/ws/join-room.integration.test.ts src/pipeline/audioFormat.test.ts src/pipeline/stt.test.ts src/pipeline/genderInstruction.test.ts src/pipeline/languageDetection.test.ts src/voices/enrollment.test.ts src/users/profileTypes.test.ts src/auth/jwt.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 src/db/pgConfig.test.ts src/ws/roomParticipants.test.ts src/ws/conversationMode.test.ts src/ws/join-room.integration.test.ts src/ws/hands-free.integration.test.ts src/pipeline/audioFormat.test.ts src/pipeline/stt.test.ts src/pipeline/genderInstruction.test.ts src/pipeline/languageDetection.test.ts src/voices/enrollment.test.ts src/users/profileTypes.test.ts src/auth/jwt.test.ts",
     "verify:regressions": "node ../apps/mobile/scripts/verify-regressions.mjs",
     "spike:voice": "tsx scripts/spike-custom-voice.ts",
     "spike:voice:fish": "tsx scripts/spike-custom-voice-fish.ts",

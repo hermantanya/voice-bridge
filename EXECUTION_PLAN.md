@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **v2.0 phase 2** — server `utterance` routing behind `conversationMode`; **external beta** optional when domain ready)
 
 ---
 
@@ -125,11 +125,11 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ### Server
 
-- [ ] Session flag from client: `conversationMode: "hands_free" | "push_to_talk"` (on join or dedicated event)
-- [ ] **Hands-free path:** accept utterance payloads **without** shared turn lock; run STT → translate → TTS **per utterance / per speaker**; allow parallel pipelines in one room
+- [x] Session flag from client: `conversationMode: "hands_free" | "push_to_talk"` on `join_room` (defaults to push-to-talk)
+- [x] **Hands-free path:** `utterance` event accepts payloads **without** shared turn lock; run STT → translate → TTS **per utterance / per speaker**; parallel pipelines do not block PTT floor state
 - [ ] **PTT path:** unchanged turn gating on `audio_chunk`
 - [ ] Rate limits and billable ms still **per participant** (existing room usage model)
-- [ ] Integration tests: overlapping utterances from two clients both deliver translations
+- [x] Integration tests: overlapping utterances from two clients both deliver translations (mock pipeline)
 
 ### Mobile / web
 
@@ -142,7 +142,7 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 ### Phased delivery
 
 1. [x] **Self-mute + indicator** on current PTT session (push-to-talk only; mute stops an active hold without sending short/empty audio, releases the floor only if you held the speaking turn; unmute restores hold-to-talk)
-2. [ ] **Server utterance routing** (Option A) behind mode flag
+2. [x] **Server utterance routing** (Option A) behind mode flag — clients still default to PTT until phase 3–4
 3. [ ] **Client VAD** wired to utterance send when hands-free + live
 4. [ ] **Settings mode toggle** + dogfood on phone + web
 5. [ ] Bump **v2.0.0** when hands-free + mute + PTT fallback ship
