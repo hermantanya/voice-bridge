@@ -49,7 +49,13 @@ test("validateAudioBuffer rejects tiny payloads", () => {
     validateAudioBuffer(Buffer.alloc(MIN_AUDIO_BYTES - 1)),
     "Recording too short. Hold the button a little longer and try again.",
   );
-  assert.equal(validateAudioBuffer(Buffer.alloc(MIN_AUDIO_BYTES)), null);
+  const m4aPayload = Buffer.alloc(MIN_AUDIO_BYTES, 0);
+  m4aPayload.write("ftyp", 4, "ascii");
+  assert.equal(validateAudioBuffer(m4aPayload), null);
+  assert.match(
+    validateAudioBuffer(Buffer.alloc(MIN_AUDIO_BYTES, 1)) ?? "",
+    /too short/i,
+  );
 });
 
 test("validateRecordingDurationMs rejects very short holds", () => {

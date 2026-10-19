@@ -10,7 +10,7 @@ import { Platform } from "react-native";
 
 import {
   isDeliverableRecording,
-  nativeRecordingFormatForUpload,
+  resolveNativeUploadFormat,
 } from "../session/nativeRecordingFormat";
 import {
   nativeRecordingDurationMs,
@@ -428,12 +428,15 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     }
 
     nativeStopRequestedRef.current = false;
+    recordingStartedAtRef.current = Date.now();
     const granted = await ensurePermissions();
     if (!granted) {
+      recordingStartedAtRef.current = null;
       throw new Error("Microphone permission is required.");
     }
 
     if (nativeStopRequestedRef.current) {
+      recordingStartedAtRef.current = null;
       return;
     }
 
@@ -443,6 +446,7 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
     });
 
     if (nativeStopRequestedRef.current) {
+      recordingStartedAtRef.current = null;
       return;
     }
 
@@ -455,10 +459,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
       } catch {
         // Recording never started.
       }
+      recordingStartedAtRef.current = null;
       return;
     }
 
-    recordingStartedAtRef.current = Date.now();
     recording.record();
 
     if (nativeStopRequestedRef.current) {
@@ -565,7 +569,10 @@ export function useAudio({ onAudioReady, enabled = true }: UseAudioOptions) {
         return false;
       }
 
-      const format = nativeRecordingFormatForUpload(readResult.uri);
+      const format = resolveNativeUploadFormat(
+        readResult.uri,
+        readResult.audioBase64,
+      );
       return deliverRecording(
         readResult.audioBase64,
         format,

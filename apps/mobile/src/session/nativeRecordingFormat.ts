@@ -40,7 +40,99 @@ export function nativeRecordingFormatForUpload(uri: string): string {
 
 /** Wall-clock / recorder duration; keep low so normal holds are not rejected. */
 export const MIN_RECORDING_DURATION_MS = 200;
-export const MIN_RECORDING_BYTES = 512;
+/**
+ * ~200 ms at 128 kbps AAC is ~3.2 KB; 512 B only catches container headers and
+ * Whisper rejects those with "could not be decoded".
+ */
+export const MIN_RECORDING_BYTES = 1600;
+
+function decodeBase64Prefix(base64: string, byteCount: number): Uint8Array | null {
+  const trimmed = base64.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sliceLen = Math.min(trimmed.length, Math.ceil((byteCount * 4) / 3));
+  const chunk = trimmed.slice(0, sliceLen);
+
+  const decode =
+    typeof globalThis.atob === "function"
+      ? globalThis.atob.bind(globalThis)
+      : null;
+  if (!decode) {
+    return null;
+  }
+
+  try {
+    const binary = decode(chunk);
+    const out = new Uint8Array(Math.min(binary.length, byteCount));
+    for (let i = 0; i < out.length; i += 1) {
+      out[i] = binary.charCodeAt(i);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function asciiAt(bytes: Uint8Array, offset: number, text: string): boolean {
+  if (offset + text.length > bytes.length) {
+    return false;
+  }
+  for (let i = 0; i < text.length; i += 1) {
+    if (bytes[offset + i] !== text.charCodeAt(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Sniff container magic from payload bytes (more reliable than URI extension). */
+export function detectUploadFormatFromBase64(
+  audioBase64: string,
+): string | null {
+  const bytes = decodeBase64Prefix(audioBase64, 16);
+  if (!bytes || bytes.length < 4) {
+    return null;
+  }
+
+  if (asciiAt(bytes, 0, "caff")) {
+    return "caf";
+  }
+
+  if (bytes.length >= 8 && asciiAt(bytes, 4, "ftyp")) {
+    return "m4a";
+  }
+
+  if (
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  ) {
+    return "webm";
+  }
+
+  if (asciiAt(bytes, 0, "RIFF") && asciiAt(bytes, 8, "WAVE")) {
+    return "wav";
+  }
+
+  return null;
+}
+
+export function hasValidRecordingContainer(audioBase64: string): boolean {
+  return detectUploadFormatFromBase64(audioBase64) !== null;
+}
+
+export function resolveNativeUploadFormat(
+  uri: string,
+  audioBase64: string,
+): string {
+  return (
+    detectUploadFormatFromBase64(audioBase64) ??
+    nativeRecordingFormatForUpload(uri)
+  );
+}
 
 export function isDeliverableRecording(
   audioBase64: string,
@@ -53,6 +145,10 @@ export function isDeliverableRecording(
     return false;
   }
 
-  const byteLength = Math.floor((audioBase64.length * 3) / 4);
-  return byteLength >= MIN_RECORDING_BYTES;
+  const byteLength = Math.floor((audioBase64.trim().length * 3) / 4);
+  if (byteLength < MIN_RECORDING_BYTES) {
+    return false;
+  }
+
+  return hasValidRecordingContainer(audioBase64);
 }

@@ -9,6 +9,7 @@ import {
   type TurnState,
 } from "../session/appState";
 import {
+  hasValidRecordingContainer,
   MIN_RECORDING_DURATION_MS,
   MIN_RECORDING_BYTES,
 } from "../session/nativeRecordingFormat";
@@ -476,6 +477,13 @@ export function useSocket({
         return;
       }
 
+      if (!hasValidRecordingContainer(trimmed)) {
+        setErrorMessage(
+          "Could not read that recording. Hold the button a little longer and try again.",
+        );
+        return;
+      }
+
       pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
       if (pendingSpeechMsRef.current < MIN_RECORDING_DURATION_MS) {
         setErrorMessage(
@@ -671,5 +679,6 @@ export function useSocket({
     claimTurn,
     releaseTurn,
     sendAudioChunk,
+    setErrorMessage,
   };
 };

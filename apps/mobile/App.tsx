@@ -369,6 +369,14 @@ export default function App() {
       return false;
     }
     const delivered = await audio.stopRecording();
+    if (!delivered) {
+      holdStartedAtRef.current = null;
+      if (hadSpeakingTurn) {
+        socket.setErrorMessage(
+          "Could not read that recording. Hold the button a little longer and try again.",
+        );
+      }
+    }
     if (
       shouldReleaseTurnAfterLocalStop({
         hadSpeakingTurn,
@@ -378,7 +386,13 @@ export default function App() {
       await socket.releaseTurn();
     }
     return delivered;
-  }, [audio.isRecording, audio.stopRecording, socket.isMyTurn, socket.releaseTurn]);
+  }, [
+    audio.isRecording,
+    audio.stopRecording,
+    socket.isMyTurn,
+    socket.releaseTurn,
+    socket.setErrorMessage,
+  ]);
 
   const handleStartRecording = useCallback(
     async (stillHolding: () => boolean) => {
