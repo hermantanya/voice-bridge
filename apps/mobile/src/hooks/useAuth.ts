@@ -112,11 +112,17 @@ export function useAuth() {
       if (!token) {
         throw new Error("Not signed in");
       }
+      if (Object.keys(patch).length === 0) {
+        if (!session) {
+          throw new Error("Not signed in");
+        }
+        return session;
+      }
       const updated = await patchProfile(token, patch);
       setSession(updated);
       return updated;
     },
-    [],
+    [session],
   );
 
   return {

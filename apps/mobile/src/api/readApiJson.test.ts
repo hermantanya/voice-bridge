@@ -24,3 +24,16 @@ test("readApiJson surfaces HTML error bodies clearly", async () => {
     /Server error \(404\): <html>Not Found/,
   );
 });
+
+test("readApiJson parses JSON error bodies for failed responses", async () => {
+  const response = new Response(
+    JSON.stringify({ error: "No supported profile fields to update" }),
+    {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+
+  const body = await readApiJson<{ error: string }>(response);
+  assert.equal(body.error, "No supported profile fields to update");
+});

@@ -41,6 +41,14 @@ export async function runHoldToTalkStart(
   return "recording";
 }
 
+
+export function shouldReleaseTurnAfterLocalStop(input: {
+  hadSpeakingTurn: boolean;
+  deliveredAudio: boolean;
+}): boolean {
+  return input.hadSpeakingTurn && !input.deliveredAudio;
+}
+
 export function shouldForceStopRecording(input: {
   inSession: boolean;
   isMyTurn: boolean;

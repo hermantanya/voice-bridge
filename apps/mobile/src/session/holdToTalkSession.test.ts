@@ -5,6 +5,7 @@ import {
   runHoldToTalkStart,
   shouldForceStopRecording,
   shouldReleaseHoldTimestamp,
+  shouldReleaseTurnAfterLocalStop,
 } from "./holdToTalkSession.js";
 
 function createDeps(overrides: Partial<Parameters<typeof runHoldToTalkStart>[0]> = {}) {
@@ -123,4 +124,28 @@ test("shouldReleaseHoldTimestamp clears timing for cancelled starts", () => {
   assert.equal(shouldReleaseHoldTimestamp("denied"), true);
   assert.equal(shouldReleaseHoldTimestamp("cancelled_before_record"), true);
   assert.equal(shouldReleaseHoldTimestamp("recording"), false);
+});
+
+test("shouldReleaseTurnAfterLocalStop only when turn held without upload", () => {
+  assert.equal(
+    shouldReleaseTurnAfterLocalStop({
+      hadSpeakingTurn: true,
+      deliveredAudio: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldReleaseTurnAfterLocalStop({
+      hadSpeakingTurn: true,
+      deliveredAudio: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldReleaseTurnAfterLocalStop({
+      hadSpeakingTurn: false,
+      deliveredAudio: false,
+    }),
+    false,
+  );
 });

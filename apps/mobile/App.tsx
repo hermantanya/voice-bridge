@@ -15,7 +15,7 @@ import {
   loadDevicePrefs,
   saveDevicePrefs,
 } from "./src/session/devicePrefsStorage";
-import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp } from "./src/session/holdToTalkSession";
+import { runHoldToTalkStart, shouldForceStopRecording, shouldReleaseHoldTimestamp, shouldReleaseTurnAfterLocalStop } from "./src/session/holdToTalkSession";
 import { generateRoomCode, normalizeRoomCode } from "./src/session/appState";
 import { loadGuestMode, saveGuestMode } from "./src/auth/entryModeStorage";
 import { applyServerProfileVoice } from "./src/session/applyServerProfileVoice";
@@ -364,12 +364,21 @@ export default function App() {
   }, [audio.playAudioBase64]);
 
   const handleStopRecording = useCallback(async () => {
+    const hadSpeakingTurn = socket.isMyTurn;
+    if (!audio.isRecording) {
+      return false;
+    }
     const delivered = await audio.stopRecording();
-    if (!delivered) {
+    if (
+      shouldReleaseTurnAfterLocalStop({
+        hadSpeakingTurn,
+        deliveredAudio: delivered,
+      })
+    ) {
       await socket.releaseTurn();
     }
     return delivered;
-  }, [audio.stopRecording, socket.releaseTurn]);
+  }, [audio.isRecording, audio.stopRecording, socket.isMyTurn, socket.releaseTurn]);
 
   const handleStartRecording = useCallback(
     async (stillHolding: () => boolean) => {
@@ -420,14 +429,25 @@ export default function App() {
   ]);
 
   const handleEndSpeaking = useCallback(async () => {
+    const hadSpeakingTurn = socket.isMyTurn;
     let delivered = false;
     if (audio.isRecording) {
       delivered = await audio.stopRecording();
     }
-    if (!delivered) {
+    if (
+      shouldReleaseTurnAfterLocalStop({
+        hadSpeakingTurn,
+        deliveredAudio: delivered,
+      })
+    ) {
       await socket.releaseTurn();
     }
-  }, [audio.isRecording, audio.stopRecording, socket.releaseTurn]);
+  }, [
+    audio.isRecording,
+    audio.stopRecording,
+    socket.isMyTurn,
+    socket.releaseTurn,
+  ]);
 
   const handleLeaveSession = useCallback(() => {
     audio.releaseMicrophone();

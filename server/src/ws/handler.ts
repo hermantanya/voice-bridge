@@ -1,6 +1,9 @@
 import type { Server, Socket } from "socket.io";
 
-import { validateAudioBuffer } from "../pipeline/audioFormat.js";
+import {
+  validateAudioBuffer,
+  validateRecordingDurationMs,
+} from "../pipeline/audioFormat.js";
 import { runTranslationPipeline } from "../pipeline/index.js";
 import { resolveTargetLanguage } from "../pipeline/languageDetection.js";
 import {
@@ -382,12 +385,34 @@ export function registerSocketHandlers(
         return;
       }
 
-      room.phase = "processing";
-
       const speechMs = Math.max(
         0,
         Math.round(payload.recordingDurationMs ?? 0),
       );
+
+      let audio: Buffer;
+      try {
+        audio = Buffer.from(payload.audioBase64, "base64");
+      } catch {
+        openTurnFloor(io, code, room);
+        socket.emit("error", {
+          message: "Invalid audio data. Try recording again.",
+        });
+        return;
+      }
+
+      const audioValidationMessage = validateAudioBuffer(audio);
+      const durationValidationMessage = validateRecordingDurationMs(speechMs);
+      if (audioValidationMessage || durationValidationMessage) {
+        openTurnFloor(io, code, room);
+        socket.emit("error", {
+          message: audioValidationMessage ?? durationValidationMessage!,
+        });
+        return;
+      }
+
+      room.phase = "processing";
+
       const pipelineStartMs = resolvePipelineStartMs(
         payload.recordingStartedAt,
         speechMs,
@@ -398,28 +423,6 @@ export function registerSocketHandlers(
       emitUsageUpdate(io, code, room);
 
       try {
-        let audio: Buffer;
-        try {
-          audio = Buffer.from(payload.audioBase64, "base64");
-        } catch {
-          closeActivePipeline(room.activeConversation, socket.id);
-          emitUsageUpdate(io, code, room);
-          openTurnFloor(io, code, room);
-          socket.emit("error", {
-            message: "Invalid audio data. Try recording again.",
-          });
-          return;
-        }
-
-        const audioValidationMessage = validateAudioBuffer(audio);
-        if (audioValidationMessage) {
-          closeActivePipeline(room.activeConversation, socket.id);
-          emitUsageUpdate(io, code, room);
-          openTurnFloor(io, code, room);
-          socket.emit("error", { message: audioValidationMessage });
-          return;
-        }
-
         const socketsInRoom = await io.in(code).fetchSockets();
         const listener = socketsInRoom.find((s) => s.id !== socket.id);
         const targetLang = listener

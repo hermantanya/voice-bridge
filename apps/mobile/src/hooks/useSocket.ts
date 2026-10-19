@@ -8,6 +8,10 @@ import {
   shouldClearPartnerLang,
   type TurnState,
 } from "../session/appState";
+import {
+  MIN_RECORDING_DURATION_MS,
+  MIN_RECORDING_BYTES,
+} from "../session/nativeRecordingFormat";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type TurnPhase = "waiting" | "speaking" | "processing";
@@ -83,7 +87,6 @@ type UsagePayload = {
   activeConversationMs?: number;
 };
 
-const MIN_AUDIO_BYTES = 512;
 
 function hasParticipantUsageMap(
   map: Record<string, number> | undefined,
@@ -422,11 +425,19 @@ export function useSocket({
       }
 
       socket.emit("release_turn", {}, () => {
-        applyTurnState({
-          turnParticipantId: null,
-          phase: "waiting",
-          version: turnStateRef.current.version + 1,
-        });
+        const me = participantIdRef.current;
+        const turn = turnStateRef.current;
+        if (
+          me &&
+          turn.turnParticipantId === me &&
+          turn.phase === "speaking"
+        ) {
+          applyTurnState({
+            turnParticipantId: null,
+            phase: "waiting",
+            version: turn.version + 1,
+          });
+        }
         resolve();
       });
     });
@@ -460,12 +471,18 @@ export function useSocket({
       }
 
       const byteLength = Math.floor((trimmed.length * 3) / 4);
-      if (byteLength < MIN_AUDIO_BYTES) {
+      if (byteLength < MIN_RECORDING_BYTES) {
         setErrorMessage("Recording too short. Hold the button a little longer.");
         return;
       }
 
       pendingSpeechMsRef.current = Math.max(0, Math.round(recordingDurationMs));
+      if (pendingSpeechMsRef.current < MIN_RECORDING_DURATION_MS) {
+        setErrorMessage(
+          "Recording too short. Hold the button a little longer.",
+        );
+        return;
+      }
 
       setErrorMessage(null);
       socket.emit("audio_chunk", {

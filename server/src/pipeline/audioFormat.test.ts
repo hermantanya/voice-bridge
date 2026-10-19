@@ -6,6 +6,7 @@ import {
   mimeTypeForAudioFormat,
   normalizeAudioFormat,
   validateAudioBuffer,
+  validateRecordingDurationMs,
 } from "./audioFormat.js";
 
 test("normalizeAudioFormat maps caf to m4a for Whisper", () => {
@@ -30,4 +31,12 @@ test("validateAudioBuffer rejects tiny payloads", () => {
     "Recording too short. Hold the button a little longer and try again.",
   );
   assert.equal(validateAudioBuffer(Buffer.alloc(MIN_AUDIO_BYTES)), null);
+});
+
+test("validateRecordingDurationMs rejects very short holds", () => {
+  assert.match(
+    validateRecordingDurationMs(50) ?? "",
+    /too short/i,
+  );
+  assert.equal(validateRecordingDurationMs(250), null);
 });

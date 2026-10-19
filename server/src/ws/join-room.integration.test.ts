@@ -291,3 +291,56 @@ test("concurrent joins still converge to two participants", async () => {
     await server.close();
   }
 });
+
+test("audio_chunk rejects tiny payload before translation", async () => {
+  const server = await startTestServer();
+  const roomCode = "AUD01";
+  const clients: Array<() => void> = [];
+
+  try {
+    const { socket: host, disconnect: disconnectHost } = await joinRoom(
+      server.url,
+      roomCode,
+      "en",
+    );
+    clients.push(disconnectHost);
+    const { socket: guest, disconnect: disconnectGuest } = await joinRoom(
+      server.url,
+      roomCode,
+      "he",
+    );
+    clients.push(disconnectGuest);
+
+    const speakingPromise = waitForTurnPhase(guest, "speaking");
+    await new Promise<void>((resolve, reject) => {
+      host.emit("claim_turn", {}, (response?: { ok?: boolean }) => {
+        if (!response?.ok) {
+          reject(new Error("claim_turn failed"));
+          return;
+        }
+        resolve();
+      });
+    });
+
+    await speakingPromise;
+
+    const errorPromise = waitForEvent<{ message?: string }>(host, "error");
+    const floorReopenedPromise = waitForTurnPhase(guest, "waiting");
+    host.emit("audio_chunk", {
+      audioBase64: Buffer.alloc(8).toString("base64"),
+      format: "webm",
+      recordingDurationMs: 500,
+    });
+
+    const errorPayload = await errorPromise;
+    assert.match(errorPayload.message ?? "", /too short/i);
+
+    const turnState = await floorReopenedPromise;
+    assert.equal(turnState.turnParticipantId, null);
+  } finally {
+    for (const disconnect of clients) {
+      disconnect();
+    }
+    await server.close();
+  }
+});

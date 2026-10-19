@@ -1,5 +1,7 @@
 /** Minimum decoded audio size before calling Whisper (avoids empty/corrupt uploads). */
 export const MIN_AUDIO_BYTES = 512;
+/** Keep aligned with apps/mobile/src/session/nativeRecordingFormat.ts */
+export const MIN_RECORDING_DURATION_MS = 200;
 
 const WHISPER_FORMATS = new Set([
   "webm",
@@ -59,6 +61,14 @@ export function mimeTypeForAudioFormat(format: string): string {
 
 export function validateAudioBuffer(audio: Buffer): string | null {
   if (audio.length < MIN_AUDIO_BYTES) {
+    return "Recording too short. Hold the button a little longer and try again.";
+  }
+  return null;
+}
+
+
+export function validateRecordingDurationMs(durationMs: number): string | null {
+  if (durationMs < MIN_RECORDING_DURATION_MS) {
     return "Recording too short. Hold the button a little longer and try again.";
   }
   return null;

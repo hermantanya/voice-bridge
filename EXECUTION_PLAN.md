@@ -2,7 +2,7 @@
 
 Living plan for v1.x delivery. Updated when we change provider or scope.
 
-**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1 experimental** — self-mute + iOS audio fixes on `main` for dogfood; emergency revert undone — test before any rollback; **external beta** optional when domain ready)
+**Last updated:** October 2026 (**v1.4 shipped**; v1.5 internal polish done; **v2.0 phase 1** — self-mute on PTT + iOS upload fixes; **external beta** optional when domain ready)
 
 ---
 
@@ -141,7 +141,7 @@ Gate: you are ready to give testers a link and they sign in **without** seeing a
 
 ### Phased delivery
 
-1. [x] **Self-mute + indicator** on current PTT session (validate UX and a11y) — **experimental on `main`**; dogfood PTT + translation before calling phase 1 done
+1. [x] **Self-mute + indicator** on current PTT session (push-to-talk only; mute stops an active hold without sending short/empty audio, releases the floor only if you held the speaking turn; unmute restores hold-to-talk)
 2. [ ] **Server utterance routing** (Option A) behind mode flag
 3. [ ] **Client VAD** wired to utterance send when hands-free + live
 4. [ ] **Settings mode toggle** + dogfood on phone + web
